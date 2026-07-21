@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+readonly REQUIRED_DIRS=(
+  app bin config credentials docs evidence logs messages/native
+  messages/normalized messages/rejected messages/replay schemas scripts
+  services tests/unit tests/integration tests/security tests/replay tools
+)
+failures=0
+
+pass() { echo "PASS: $*"; }
+fail() { echo "FAIL: $*" >&2; failures=$((failures + 1)); }
+
+for relative_dir in "${REQUIRED_DIRS[@]}"; do
+  [[ -d "${REPO_ROOT}/${relative_dir}" ]] && pass "directory ${relative_dir}" || fail "missing directory ${relative_dir}"
+done
+
+for script in bin/safety_preflight scripts/setup_development.sh scripts/collect_platform_inventory.sh scripts/run_acceptance_checks.sh; do
+  [[ -x "${REPO_ROOT}/${script}" ]] && pass "executable ${script}" || fail "not executable ${script}"
+  bash -n "${REPO_ROOT}/${script}" && pass "shell syntax ${script}" || fail "shell syntax ${script}"
+done
+
+if env ALLOW_OPERATIONAL_OUTPUTS=false "${REPO_ROOT}/bin/safety_preflight" >/dev/null; then
+  pass 'interlock accepts literal false'
+else
+  fail 'interlock rejected literal false'
+fi
+if env -u ALLOW_OPERATIONAL_OUTPUTS "${REPO_ROOT}/bin/safety_preflight" >/dev/null 2>&1; then
+  fail 'interlock accepted absent value'
+else
+  pass 'interlock rejects absent value'
+fi
+if env ALLOW_OPERATIONAL_OUTPUTS=true "${REPO_ROOT}/bin/safety_preflight" >/dev/null 2>&1; then
+  fail 'interlock accepted true value'
+else
+  pass 'interlock rejects true value'
+fi
+
+# Scan executable/source locations only. Governance documents necessarily name
+# prohibited outputs in order to forbid them.
+if rg -n -i '(gpio|modbus|relay|siren|elevator.control|emergency.shutdown)' \
+  "${REPO_ROOT}/app" "${REPO_ROOT}/bin" "${REPO_ROOT}/scripts" "${REPO_ROOT}/tools" \
+  --glob '!verify_phase0_phase1.sh'; then
+  fail 'operational-output vocabulary found in executable source'
+else
+  pass 'no operational-output implementation found'
+fi
+
+if find "${REPO_ROOT}/credentials" -mindepth 1 ! -name .gitkeep -print -quit | grep -q .; then
+  fail 'credential directory contains non-placeholder files (contents not inspected)'
+else
+  pass 'credential directory contains no credential files'
+fi
+
+credential_mode=$(stat -c '%a' "${REPO_ROOT}/credentials")
+[[ "${credential_mode}" == '700' ]] && pass 'credentials directory mode 0700' || fail "credentials directory mode is ${credential_mode}, expected 700"
+
+if rg -n '/opt|systemctl|useradd|groupadd|tmpfiles|logrotate\.d' \
+  "${REPO_ROOT}/bin" "${REPO_ROOT}/scripts" "${REPO_ROOT}/config"; then
+  fail 'privileged deployment reference found in active development files'
+else
+  pass 'no privileged deployment reference in active development files'
+fi
+
+echo "RESULT: ${failures} failure(s)"
+exit "${failures}"
+

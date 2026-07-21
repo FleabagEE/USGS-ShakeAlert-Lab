@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly LAB_BANNER='SHAKEALERT LAB — NO OPERATIONAL OUTPUTS'
+
+if [[ ! -v ALLOW_OPERATIONAL_OUTPUTS ]]; then
+  echo 'FATAL: ALLOW_OPERATIONAL_OUTPUTS is absent; refusing to start.' >&2
+  exit 78
+fi
+if [[ "${ALLOW_OPERATIONAL_OUTPUTS}" != 'false' ]]; then
+  echo 'FATAL: operational outputs are prohibited; refusing to start.' >&2
+  exit 78
+fi
+
+echo "${LAB_BANNER}"
+echo 'Safety interlock: enforced (operational outputs disabled)'
+

@@ -1,0 +1,37 @@
+# Confidential inputs and local secrets
+credentials/*
+!credentials/.gitkeep
+config/*.env
+config/*.secret
+config/*credentials*
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+
+# Captures, logs, and generated evidence
+evidence/*
+!evidence/.gitkeep
+logs/*
+!logs/.gitkeep
+messages/native/*
+messages/normalized/*
+messages/rejected/*
+messages/replay/*
+!messages/native/.gitkeep
+!messages/normalized/.gitkeep
+!messages/rejected/.gitkeep
+!messages/replay/.gitkeep
+
+# Local development state
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.swp
+.DS_Store
+
+
+# Confidential reference documents
+docs/reference/
