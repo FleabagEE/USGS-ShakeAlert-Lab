@@ -1,11 +1,14 @@
-"""Tests for exact-topic routing."""
+"""Tests for exact-destination routing."""
 
 from datetime import datetime, timezone
 
 import pytest
 
-from shakealert_lab.messaging.inbound import MessageEnvelope
-from shakealert_lab.messaging.router import TopicRouter, UnknownTopicError
+from shakealert_lab.messaging.inbound import Environment, MessageEnvelope
+from shakealert_lab.messaging.router import (
+    MessageRouter,
+    UnknownDestinationError,
+)
 
 
 class RecordingHandler:
@@ -16,20 +19,20 @@ class RecordingHandler:
         self.messages.append(message)
 
 
-def make_message(topic: str) -> MessageEnvelope:
+def make_message(destination: str | None) -> MessageEnvelope:
     return MessageEnvelope(
-        topic=topic,
         payload=b"<event_message />",
         received_at_utc=datetime.now(timezone.utc),
-        qos=0,
-        retain=False,
+        environment=Environment.SCENARIO,
+        connection_name="scenario-primary",
+        destination=destination,
     )
 
 
-def test_route_calls_exact_topic_handler() -> None:
+def test_route_calls_exact_destination_handler() -> None:
     event_handler = RecordingHandler()
     health_handler = RecordingHandler()
-    router = TopicRouter(
+    router = MessageRouter(
         {
             "eew.sys.dm.data": event_handler,
             "eew.sys.ha.data": health_handler,
@@ -44,14 +47,30 @@ def test_route_calls_exact_topic_handler() -> None:
 
 
 def test_route_uses_exact_matching_only() -> None:
-    router = TopicRouter({"eew.sys.dm.data": RecordingHandler()})
+    router = MessageRouter({"eew.sys.dm.data": RecordingHandler()})
 
-    with pytest.raises(UnknownTopicError):
+    with pytest.raises(UnknownDestinationError):
         router.route(make_message("eew.sys.dm.data.extra"))
 
 
-def test_unknown_topic_is_rejected() -> None:
-    router = TopicRouter({})
+def test_route_is_case_sensitive() -> None:
+    router = MessageRouter({"eew.sys.dm.data": RecordingHandler()})
 
-    with pytest.raises(UnknownTopicError):
+    with pytest.raises(UnknownDestinationError):
+        router.route(make_message("EEW.SYS.DM.DATA"))
+
+
+def test_unknown_destination_is_rejected() -> None:
+    router = MessageRouter({})
+
+    with pytest.raises(UnknownDestinationError):
         router.route(make_message("eew.sys.ha.data"))
+
+
+def test_absent_destination_is_rejected() -> None:
+    router = MessageRouter({})
+
+    with pytest.raises(UnknownDestinationError) as raised:
+        router.route(make_message(None))
+
+    assert raised.value.args == (None,)

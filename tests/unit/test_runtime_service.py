@@ -12,8 +12,8 @@ import pytest
 
 import shakealert_lab.messaging.queue_worker as queue_worker_module
 import shakealert_lab.runtime.service as runtime_service_module
-from shakealert_lab.messaging.inbound import MessageEnvelope
-from shakealert_lab.messaging.router import TopicRouter
+from shakealert_lab.messaging.inbound import Environment, MessageEnvelope
+from shakealert_lab.messaging.router import MessageRouter
 from shakealert_lab.parsing.errors import MessageParseError
 from shakealert_lab.runtime.service import (
     QueueSaturatedError,
@@ -29,14 +29,14 @@ class Handler(Protocol):
 
 def message(
     payload: bytes = b"message",
-    topic: str = "eew.sys.dm.data",
+    destination: str | None = "eew.sys.dm.data",
 ) -> MessageEnvelope:
     return MessageEnvelope(
-        topic=topic,
         payload=payload,
         received_at_utc=datetime.now(timezone.utc),
-        qos=0,
-        retain=False,
+        environment=Environment.SCENARIO,
+        connection_name="scenario-primary",
+        destination=destination,
     )
 
 
@@ -63,7 +63,7 @@ def service_for(
     deadline: float = 1.0,
 ) -> RuntimeService:
     return RuntimeService(
-        TopicRouter({"eew.sys.dm.data": handler}),
+        MessageRouter({"eew.sys.dm.data": handler}),
         queue_capacity=capacity,
         shutdown_deadline_seconds=deadline,
     )
@@ -326,11 +326,11 @@ def test_concurrent_start_calls_create_one_running_worker() -> None:
     runtime.stop()
 
 
-def test_unknown_topic_failure_is_isolated_and_processing_continues() -> None:
+def test_unknown_destination_failure_is_isolated_and_processing_continues() -> None:
     handler = RecordingHandler()
     runtime = service_for(handler)
     runtime.start()
-    runtime.submit(message(b"unknown", topic="eew.sys.ha.data"))
+    runtime.submit(message(b"unknown", destination="eew.sys.ha.data"))
     runtime.submit(message(b"known"))
 
     runtime.stop()

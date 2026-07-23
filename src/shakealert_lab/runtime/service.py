@@ -8,7 +8,10 @@ from time import monotonic
 
 from shakealert_lab.messaging.inbound import MessageEnvelope
 from shakealert_lab.messaging.queue_worker import QueueWorker
-from shakealert_lab.messaging.router import TopicRouter, UnknownTopicError
+from shakealert_lab.messaging.router import (
+    MessageRouter,
+    UnknownDestinationError,
+)
 from shakealert_lab.parsing.errors import (
     MessageDecodeError,
     MessageParseError,
@@ -72,7 +75,7 @@ class RuntimeService:
     """Coordinate one bounded queue and one routing worker."""
 
     _MESSAGE_ERROR_TYPES = (
-        UnknownTopicError,
+        UnknownDestinationError,
         MessageDecodeError,
         MessageParseError,
         UnsupportedMessageError,
@@ -80,7 +83,7 @@ class RuntimeService:
 
     def __init__(
         self,
-        router: TopicRouter,
+        router: MessageRouter,
         queue_capacity: int,
         shutdown_deadline_seconds: float,
     ) -> None:
