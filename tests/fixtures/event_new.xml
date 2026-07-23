@@ -1,0 +1,15 @@
+<event_message category="live" orig_sys="dm" message_type="new" version="0">
+    <core_info id="2008_ChinoHills_M5.4">
+        <mag units="Mw">5.4</mag>
+        <mag_uncer units="Mw">1.0000</mag_uncer>
+        <lat units="deg">33.953</lat>
+        <lat_uncer units="deg">0.5000</lat_uncer>
+        <lon units="deg">-117.76</lon>
+        <lon_uncer units="deg">0.5000</lon_uncer>
+        <depth units="km">5</depth>
+        <depth_uncer units="km">50.0000</depth_uncer>
+        <orig_time units="UTC">2008-07-29T18:42:15.710Z</orig_time>
+        <orig_time_uncer units="sec">20.0000</orig_time_uncer>
+        <likelihood>1.0000</likelihood>
+    </core_info>
+</event_message>

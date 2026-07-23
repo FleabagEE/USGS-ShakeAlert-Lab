@@ -1,0 +1,11 @@
+<system_status alg_name="ha" alg_version="1.0.6d"
+    instance="test1" timestamp="2016-11-21T14:23:00PST">
+    <component name="component1" num_okay="1" num_required="1" status="ON">
+        <subcomponent name="component1" status="ON"
+            timestamp="2016-11-21T14:22:57PST"/>
+    </component>
+    <component name="component2" num_okay="1" num_required="1" status="ON">
+        <subcomponent name="component2" status="ON"
+            timestamp="2016-11-21T14:22:57PST"/>
+    </component>
+</system_status>
