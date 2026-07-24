@@ -1,3 +1,25 @@
-"""Message transport abstractions."""
 
-# TODO: Define the transport package API in a later phase.
+"""Protocol-neutral message transport abstractions."""
+
+from shakealert_lab.transport.base import (
+    ConnectionState,
+    MessageSink,
+    MessageTransport,
+    SanitizedTransportError,
+    TransportErrorCategory,
+    TransportSnapshot,
+    TransportState,
+    TransportStopReport,
+)
+
+
+__all__ = [
+    "ConnectionState",
+    "MessageSink",
+    "MessageTransport",
+    "SanitizedTransportError",
+    "TransportErrorCategory",
+    "TransportSnapshot",
+    "TransportState",
+    "TransportStopReport",
+]
