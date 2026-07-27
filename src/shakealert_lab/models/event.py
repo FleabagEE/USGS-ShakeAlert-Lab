@@ -1,27 +1,11 @@
-"""Event model placeholders."""
-
+"""Protocol-independent verified field container."""
 from dataclasses import dataclass
-from datetime import datetime
-
-
-@dataclass(frozen=True)
-class EventCoreInfo:
-    """Core information documented for a ShakeAlert event."""
-
-    event_id: str
-    magnitude: float
-    latitude: float
-    longitude: float
-    depth_km: float
-    origin_time_utc: datetime
-    likelihood: float
-
-
-@dataclass(frozen=True)
-class ShakeAlertEvent:
-    """Minimal placeholder for a ShakeAlert event message."""
-
-    category: str
-    message_type: str
-    version: int
-    core: EventCoreInfo
+from types import MappingProxyType
+from typing import Mapping
+Scalar = str | int | float | bool | None
+@dataclass(frozen=True, slots=True)
+class VerifiedFieldSet:
+    schema_identifier: str
+    values: Mapping[str, Scalar]
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "values", MappingProxyType(dict(self.values)))

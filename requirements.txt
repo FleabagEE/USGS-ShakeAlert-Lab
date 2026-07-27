@@ -1,1 +1,1 @@
-paho-mqtt==2.1.0
+# Core laboratory runtime uses only the Python standard library.

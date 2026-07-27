@@ -33,7 +33,7 @@ Decision: **NO-GO PENDING ENDPOINT-SPECIFIC NETWORK INPUTS AND FORMAL REVIEW**
 
 - Repository security checks: zero failures.
 - Host baseline checks: zero failures.
-- Python unit tests at audit baseline: 237 passed.
+- Python framework tests: 269 passed.
 - Provisioning idempotence: second run installed zero packages and preserved
   the account, permissions, safety configuration, and audit rules.
 

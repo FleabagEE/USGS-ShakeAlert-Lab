@@ -1,3 +1,3 @@
-"""Raw message storage placeholder."""
-
-# TODO: Implement raw message storage in a later phase.
+"""Compatibility exports for native capture storage."""
+from shakealert_lab.storage.capture import CaptureStorageError, NativeCapture, RawMessageStore
+__all__ = ["CaptureStorageError", "NativeCapture", "RawMessageStore"]

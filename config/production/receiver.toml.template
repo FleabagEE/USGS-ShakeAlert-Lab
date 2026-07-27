@@ -1,0 +1,23 @@
+# TEMPLATE ONLY. Replace REQUIRED_FROM_USGS values using verified materials.
+[endpoint]
+name="usgs-production"
+environment="production"
+host="REQUIRED_FROM_USGS"
+port=1
+protocol="REQUIRED_FROM_USGS"
+protocol_version="REQUIRED_FROM_USGS"
+destination="REQUIRED_FROM_USGS"
+tls_required=true
+maximum_payload_bytes=1
+connect_authorized=false
+[credentials]
+username_file="/opt/quakelogic/shakealert-lab/credentials/production.username"
+password_file="/opt/quakelogic/shakealert-lab/credentials/production.password"
+[storage]
+native_directory="/opt/quakelogic/shakealert-lab/messages/native/production"
+normalized_directory="/opt/quakelogic/shakealert-lab/messages/normalized/production"
+rejected_directory="/opt/quakelogic/shakealert-lab/messages/rejected/production"
+log_directory="/opt/quakelogic/shakealert-lab/logs/production"
+[runtime]
+queue_capacity=1024
+shutdown_timeout_seconds=30

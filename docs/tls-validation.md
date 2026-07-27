@@ -1,0 +1,3 @@
+# TLS and Authentication Validation Procedure
+
+Do not run until the endpoint, scope, and connection are authorized. Record UTC timestamp, approved hostname/port, DNS result, TCP result, chain, hostname match, expiration, issuer, fingerprint, negotiated TLS/protocol version, cipher, mTLS requirement, and sanitized authentication result. Never disable verification or use wildcard subscriptions. Classify failures as DNS, routing, firewall, certificate, hostname, client certificate, authentication, authorization, subscription, protocol/version, disabled account, allow-list, unavailable server, or unknown. No validation has yet been executed.

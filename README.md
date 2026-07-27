@@ -59,3 +59,8 @@ approve endpoint-specific DNS/TCP/TLS checks. Required hostnames, ports,
 transport versions, destinations, VPN/proxy rules, allow-list requirements,
 and TLS SNI requirements must be verified without guessing. Formal Phase 0/1
 review also remains to be signed by named owners.
+
+
+## Credential-independent framework progress
+
+All endpoint-independent frameworks and required documentation templates are implemented. The transport registry deliberately contains no default USGS adapter. Receiver units fail closed unless an active reviewed configuration exists, explicit connection authorization is true, and a verified adapter is registered. Scenario execution, production traffic, TLS/authentication evidence, field discovery, and final CUBE selection remain blocked by authorized USGS access.

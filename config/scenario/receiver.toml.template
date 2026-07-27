@@ -1,0 +1,23 @@
+# TEMPLATE ONLY. Replace REQUIRED_FROM_USGS values using verified materials.
+[endpoint]
+name="usgs-scenario"
+environment="scenario"
+host="REQUIRED_FROM_USGS"
+port=1
+protocol="REQUIRED_FROM_USGS"
+protocol_version="REQUIRED_FROM_USGS"
+destination="REQUIRED_FROM_USGS"
+tls_required=true
+maximum_payload_bytes=1
+connect_authorized=false
+[credentials]
+username_file="/opt/quakelogic/shakealert-lab/credentials/scenario.username"
+password_file="/opt/quakelogic/shakealert-lab/credentials/scenario.password"
+[storage]
+native_directory="/opt/quakelogic/shakealert-lab/messages/native/scenario"
+normalized_directory="/opt/quakelogic/shakealert-lab/messages/normalized/scenario"
+rejected_directory="/opt/quakelogic/shakealert-lab/messages/rejected/scenario"
+log_directory="/opt/quakelogic/shakealert-lab/logs/scenario"
+[runtime]
+queue_capacity=1024
+shutdown_timeout_seconds=30

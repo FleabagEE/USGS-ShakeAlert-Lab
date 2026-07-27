@@ -1,0 +1,3 @@
+# Credential Management
+
+Credentials are accepted only as protected regular files referenced by configuration. Files must be owned for the service, mode `0600` or stricter, non-symlinks, and bounded in size. The configuration loader never reads values; `credential-status` reports only `present` or `not configured`. Adapter code may use `read_secret` immediately before an authorized connection and must not log, stringify, persist, or pass secrets on the command line. Production and scenario files use separate names and configuration trees. Rotation, expiration, and actual required credential types remain **REQUIRED FROM USGS**.

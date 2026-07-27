@@ -1,0 +1,3 @@
+# Native Message Field Dictionary
+
+No ShakeAlert payload field is confirmed because no authorized native message has been captured. The capture-envelope fields (`capture_id`, environment, endpoint, protocol/version, destination, receive/server timestamps, identifiers, redelivery, delivery sequence, content type, size, hash, headers, native payload) are confirmed laboratory metadata. Event ID, message/version, cancellation, magnitude, location, depth, rupture, contours, PGA, PGV, MMI, quality, station count, heartbeat, and acknowledgment fields remain **UNKNOWN** and must be labeled confirmed/optional/conditional/inferred/undocumented/unknown after evidence review.

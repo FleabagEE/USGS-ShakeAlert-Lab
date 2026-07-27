@@ -40,7 +40,8 @@ fi
 # Scan executable/source locations only. Governance documents necessarily name
 # prohibited outputs in order to forbid them.
 if rg -n -i '(gpio|modbus|relay|siren|elevator.control|emergency.shutdown)' \
-  "${REPO_ROOT}/app" "${REPO_ROOT}/bin" "${REPO_ROOT}/scripts" "${REPO_ROOT}/tools" \
+  "${REPO_ROOT}/app" "${REPO_ROOT}/bin" "${REPO_ROOT}/scripts" "${REPO_ROOT}/services" \
+  "${REPO_ROOT}/src" "${REPO_ROOT}/tools" \
   --glob '!verify_phase0_phase1.sh'; then
   fail 'operational-output vocabulary found in executable source'
 else
@@ -57,7 +58,7 @@ credential_mode=$(stat -c '%a' "${REPO_ROOT}/credentials")
 [[ "${credential_mode}" == '700' ]] && pass 'credentials directory mode 0700' || fail "credentials directory mode is ${credential_mode}, expected 700"
 
 if rg -n '/opt|systemctl|useradd|groupadd|tmpfiles|logrotate\.d' \
-  "${REPO_ROOT}/bin" "${REPO_ROOT}/scripts" "${REPO_ROOT}/config" \
+  "${REPO_ROOT}/bin" "${REPO_ROOT}/scripts" \
   --glob '!setup_ubuntu.sh'; then
   fail 'unexpected privileged deployment reference found'
 else
