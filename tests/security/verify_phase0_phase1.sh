@@ -16,7 +16,7 @@ for relative_dir in "${REQUIRED_DIRS[@]}"; do
   [[ -d "${REPO_ROOT}/${relative_dir}" ]] && pass "directory ${relative_dir}" || fail "missing directory ${relative_dir}"
 done
 
-for script in bin/safety_preflight scripts/setup_development.sh scripts/collect_platform_inventory.sh scripts/run_acceptance_checks.sh; do
+for script in bin/safety_preflight scripts/setup_development.sh scripts/setup_ubuntu.sh scripts/collect_platform_inventory.sh scripts/run_acceptance_checks.sh tests/security/verify_host_baseline.sh; do
   [[ -x "${REPO_ROOT}/${script}" ]] && pass "executable ${script}" || fail "not executable ${script}"
   bash -n "${REPO_ROOT}/${script}" && pass "shell syntax ${script}" || fail "shell syntax ${script}"
 done
@@ -57,12 +57,12 @@ credential_mode=$(stat -c '%a' "${REPO_ROOT}/credentials")
 [[ "${credential_mode}" == '700' ]] && pass 'credentials directory mode 0700' || fail "credentials directory mode is ${credential_mode}, expected 700"
 
 if rg -n '/opt|systemctl|useradd|groupadd|tmpfiles|logrotate\.d' \
-  "${REPO_ROOT}/bin" "${REPO_ROOT}/scripts" "${REPO_ROOT}/config"; then
-  fail 'privileged deployment reference found in active development files'
+  "${REPO_ROOT}/bin" "${REPO_ROOT}/scripts" "${REPO_ROOT}/config" \
+  --glob '!setup_ubuntu.sh'; then
+  fail 'unexpected privileged deployment reference found'
 else
-  pass 'no privileged deployment reference in active development files'
+  pass 'privileged deployment is confined to setup_ubuntu.sh'
 fi
 
 echo "RESULT: ${failures} failure(s)"
 exit "${failures}"
-

@@ -24,11 +24,20 @@ class FakeNativeMessage:
 class FakeMqttClient:
     def __init__(self) -> None:
         self.on_connect: Callable[..., None] | None = None
+        self.on_disconnect: Callable[..., None] | None = None
         self.on_message: Callable[..., None] | None = None
 
     def deliver(self, topic: object, payload: object) -> None:
         assert self.on_message is not None
         self.on_message(self, None, FakeNativeMessage(topic, payload))
+
+    def deliver_connect(self, reason_code: object) -> None:
+        assert self.on_connect is not None
+        self.on_connect(self, None, object(), reason_code, None)
+
+    def deliver_disconnect(self, reason_code: object = 0) -> None:
+        assert self.on_disconnect is not None
+        self.on_disconnect(self, None, object(), reason_code, None)
 
 
 class RecordingSink:
@@ -149,17 +158,30 @@ def test_initial_snapshot() -> None:
     assert snapshot.latest_error is None
 
 
-def test_start_registers_only_on_message_and_is_idempotent() -> None:
+def test_start_replaces_all_callbacks_and_is_idempotent() -> None:
     transport, client, _ = adapter()
     sentinel = lambda: None
     client.on_connect = sentinel
+    client.on_disconnect = sentinel
+    client.on_message = sentinel
+
     transport.start()
-    callback = client.on_message
+    registered = (
+        client.on_connect,
+        client.on_disconnect,
+        client.on_message,
+    )
     transport.start()
-    assert callback is not None
-    assert client.on_message is callback
-    assert client.on_connect is sentinel
+
+    assert all(callback is not None for callback in registered)
+    assert all(callback is not sentinel for callback in registered)
+    assert (
+        client.on_connect,
+        client.on_disconnect,
+        client.on_message,
+    ) == registered
     assert transport.snapshot().state is TransportState.RUNNING
+    assert transport.snapshot().connection_state is ConnectionState.UNKNOWN
 
 
 def test_callback_preserves_payload_and_maps_exact_topic() -> None:
@@ -773,4 +795,122 @@ def test_registration_base_exception_propagates_without_leaving_false_readiness(
 
     report = transport.stop(monotonic())
     assert report.state is TransportState.FAILED
-    wait_until(lambda: client.detachment_count == 1)
+    wait_until(
+        lambda: client.on_connect is None
+        and client.on_disconnect is None
+    )
+    assert client.detachment_count == 0
+
+
+
+def test_registered_callbacks_are_owned_by_transport() -> None:
+    transport, client, _ = adapter()
+    transport.start()
+
+    for callback in (
+        client.on_connect,
+        client.on_disconnect,
+        client.on_message,
+    ):
+        assert callback is not None
+        assert getattr(callback, "__self__", None) is transport
+
+
+def test_stop_removes_all_owned_callbacks() -> None:
+    transport, client, _ = adapter()
+    transport.start()
+
+    transport.stop(monotonic())
+
+    wait_until(
+        lambda: client.on_connect is None
+        and client.on_disconnect is None
+        and client.on_message is None
+    )
+
+
+def test_stop_preserves_callbacks_replaced_by_another_owner() -> None:
+    transport, client, _ = adapter()
+    transport.start()
+    replacement = lambda *args: None
+    client.on_connect = replacement
+    client.on_disconnect = replacement
+    client.on_message = replacement
+
+    transport.stop(monotonic())
+    wait_until(lambda: transport._detachment_finished)
+
+    assert client.on_connect is replacement
+    assert client.on_disconnect is replacement
+    assert client.on_message is replacement
+
+
+@pytest.mark.parametrize(
+    ("reason_code", "expected_state"),
+    (
+        (0, ConnectionState.CONNECTED),
+        (1, ConnectionState.DISCONNECTED),
+    ),
+)
+def test_connect_callback_updates_connection_state(
+    reason_code: int,
+    expected_state: ConnectionState,
+) -> None:
+    transport, client, _ = adapter()
+    transport.start()
+    assert transport.snapshot().connection_state is ConnectionState.UNKNOWN
+
+    client.deliver_connect(reason_code)
+
+    assert transport.snapshot().connection_state is expected_state
+    assert transport.snapshot().state is TransportState.RUNNING
+
+
+def test_disconnect_callback_updates_connection_state() -> None:
+    transport, client, _ = adapter()
+    transport.start()
+    client.deliver_connect(0)
+    assert transport.snapshot().connection_state is ConnectionState.CONNECTED
+
+    client.deliver_disconnect()
+
+    assert transport.snapshot().connection_state is ConnectionState.DISCONNECTED
+    assert transport.snapshot().state is TransportState.RUNNING
+
+
+def test_registration_and_removal_do_not_change_connection_state() -> None:
+    transport, client, _ = adapter()
+    transport.start()
+    assert transport.snapshot().connection_state is ConnectionState.UNKNOWN
+
+    transport.stop(monotonic())
+    wait_until(lambda: client.on_message is None)
+
+    assert transport.snapshot().connection_state is ConnectionState.UNKNOWN
+
+
+class LifecycleGuardClient(FakeMqttClient):
+    def _unexpected(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("native lifecycle method must not be called")
+
+    connect = _unexpected
+    connect_async = _unexpected
+    disconnect = _unexpected
+    loop_start = _unexpected
+    loop_stop = _unexpected
+    subscribe = _unexpected
+
+
+def test_transport_never_invokes_native_lifecycle_methods() -> None:
+    client = LifecycleGuardClient()
+    transport = MQTTTransport(config(), RecordingSink(), client)
+
+    transport.start()
+    client.deliver_connect(0)
+    client.deliver("topic", b"data")
+    client.deliver_disconnect()
+    transport.stop(monotonic())
+
+    wait_until(lambda: client.on_message is None)
+    assert transport.snapshot().state is TransportState.STOPPING

@@ -1,16 +1,27 @@
-# Repository Permission Guidance
+# Permissions Report
 
-Development setup applies only repository-local permissions:
+## Deployed laboratory
 
-| Location | Recommended mode | Purpose |
-|---|---:|---|
-| `credentials/` | `0700` | ignored placeholder location for later protected inputs |
-| `logs/` | `0750` | ignored local logs |
-| `messages/*/` | `0750` | ignored local captures and replay artifacts |
-| `config/*.template` | `0640` or stricter | non-secret templates |
-| scripts | `0750` or `0755` | reviewed local execution |
+Provisioned on 2026-07-27:
 
-The acceptance check detects credential-directory files without reading their
-contents. Production ownership, service identities, and deployment permissions
-are intentionally unspecified until a separately approved deployment design.
+| Location | Owner | Mode | Purpose |
+|---|---|---:|---|
+| `/opt/quakelogic` | `root:shakealert` | `0750` | Isolated parent |
+| `/opt/quakelogic/shakealert-lab` | `root:shakealert` | `0750` | Laboratory root |
+| `app/`, `bin/`, `config/`, `docs/`, `schemas/`, `scripts/`, `services/`, `tests/`, `tools/` | `root:shakealert` | `0750` directories | Service-readable, not service-writable |
+| `credentials/` | `shakealert:shakealert` | `0700` | Protected credential boundary |
+| credential files, when authorized | `shakealert:shakealert` | `0600` required | Secret inputs |
+| `config/lab.env` | `root:shakealert` | `0640` | Passive safety configuration |
+| `evidence/`, `logs/`, `messages/*/` | `shakealert:shakealert` | `0750` | Service-writable laboratory data |
+| `bin/safety_preflight` | `root:shakealert` | `0750` | Root-controlled interlock |
 
+The `shakealert` account is a system account with home
+`/opt/quakelogic/shakealert-lab`, shell `/usr/sbin/nologin`, and no `sudo` or
+`admin` group. Audit rules monitor changes to credentials, configuration, and
+service definitions.
+
+## Development checkout
+
+The checkout remains owned by the developer. `credentials/` is `0700`; logs
+and message directories are `0750`; secret files, captures, logs, evidence, and
+confidential references are ignored by Git.

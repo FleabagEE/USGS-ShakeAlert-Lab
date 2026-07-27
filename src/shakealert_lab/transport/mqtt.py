@@ -31,7 +31,8 @@ from shakealert_lab.transport.base import (
 __all__ = ["MQTTTransport", "MqttAdapterConfig"]
 
 
-_ConnectCallback = Callable[..., None]
+_ConnectCallback = Callable[[object, object, object, object, object], None]
+_DisconnectCallback = Callable[[object, object, object, object, object], None]
 _MessageCallback = Callable[[object, object, "_NativeMqttMessage"], None]
 
 
@@ -46,6 +47,7 @@ class _MqttClient(Protocol):
     """Private callback-registration surface of an injected MQTT client."""
 
     on_connect: _ConnectCallback | None
+    on_disconnect: _DisconnectCallback | None
     on_message: _MessageCallback | None
 
 
@@ -122,6 +124,9 @@ class MQTTTransport:
         self._config = config
         self._sink = sink
         self._client = client
+        self._owned_on_connect = self._on_connect
+        self._owned_on_disconnect = self._on_disconnect
+        self._owned_on_message = self._on_message
         self._lock = RLock()
         self._state = TransportState.STOPPED
         self._connection_state = ConnectionState.UNKNOWN
@@ -164,7 +169,9 @@ class MQTTTransport:
 
         registration_error: Exception | None = None
         try:
-            self._client.on_message = self._on_message
+            self._client.on_connect = self._owned_on_connect
+            self._client.on_disconnect = self._owned_on_disconnect
+            self._client.on_message = self._owned_on_message
         except Exception as error:
             registration_error = error
         except BaseException:
@@ -321,6 +328,50 @@ class MQTTTransport:
             with self._lock:
                 self._callbacks_in_progress -= 1
 
+    def _on_connect(
+        self,
+        client: object,
+        userdata: object,
+        flags: object,
+        reason_code: object,
+        properties: object,
+    ) -> None:
+        """Record connection evidence supplied by the native callback."""
+        del client, userdata, flags, properties
+
+        try:
+            connected = reason_code == 0
+        except Exception as error:
+            with self._lock:
+                self._connection_state = ConnectionState.DEGRADED
+                self._record_error_locked(
+                    error,
+                    TransportErrorCategory.CONNECTION,
+                    "MQTT connection callback failed",
+                )
+            return
+
+        with self._lock:
+            self._connection_state = (
+                ConnectionState.CONNECTED
+                if connected
+                else ConnectionState.DISCONNECTED
+            )
+
+    def _on_disconnect(
+        self,
+        client: object,
+        userdata: object,
+        disconnect_flags: object,
+        reason_code: object,
+        properties: object,
+    ) -> None:
+        """Record disconnection evidence supplied by the native callback."""
+        del client, userdata, disconnect_flags, reason_code, properties
+
+        with self._lock:
+            self._connection_state = ConnectionState.DISCONNECTED
+
     def _claim_detachment_locked(self) -> bool:
         if (
             self._detachment_requested
@@ -350,7 +401,13 @@ class MQTTTransport:
 
     def _detach_message_callback(self) -> None:
         try:
-            self._client.on_message = None
+            for attribute, owned_callback in (
+                ("on_connect", self._owned_on_connect),
+                ("on_disconnect", self._owned_on_disconnect),
+                ("on_message", self._owned_on_message),
+            ):
+                if getattr(self._client, attribute) is owned_callback:
+                    setattr(self._client, attribute, None)
         except Exception as error:
             with self._lock:
                 self._record_error_locked(
