@@ -1,16 +1,39 @@
-# Ubuntu Development Baseline
+# Ubuntu Platform Build
 
-Preferred future laboratory host: Ubuntu Server 24.04 LTS. Ubuntu Server 22.04
-LTS is acceptable only when a verified client-library requirement justifies it.
-This repository does not install packages or modify the host.
+## Supported baseline
 
-Run `scripts/setup_development.sh` as a normal user. Optionally pass
-`--create-venv` to create an ignored local Python virtual environment. Then run
-the inventory and acceptance scripts. Record OS, kernel, architecture, Python,
-Java state, OpenSSL, timezone, and time synchronization without including
-hostnames, network addresses, or credentials.
+The laboratory host is Ubuntu Server 24.04 LTS on x86-64. The reproducible
+installer is `scripts/setup_ubuntu.sh`. It must run as root and is safe to run
+repeatedly. It performs these bounded actions:
 
-Applications will use UTC internally. Initial clock target: absolute offset at
-most 100 ms, warning above 250 ms, critical above 1 second. A later verified
-USGS requirement supersedes these preliminary thresholds.
+1. Refresh official Ubuntu package sources only.
+2. Install the justified protocol-neutral baseline packages.
+3. Create the `shakealert` system user with `/usr/sbin/nologin` and no
+   administrative group membership.
+4. Create `/opt/quakelogic/shakealert-lab` with the required directory tree.
+5. Install the fail-closed safety preflight and passive environment file.
+6. Enable Chrony, auditd, and rsyslog.
+7. Audit writes and attribute changes beneath laboratory credential,
+   configuration, and service-definition directories.
 
+No protocol-specific package, credential, endpoint, receiver, or service unit
+is installed. `systemd-timesyncd` is replaced by Chrony through the Ubuntu
+package dependency policy.
+
+## Validation
+
+Run:
+
+```bash
+sudo ./scripts/setup_ubuntu.sh
+sudo ./tests/security/verify_host_baseline.sh
+./scripts/collect_platform_inventory.sh
+```
+
+The second installer execution on 2026-07-27 made no additional package or
+account changes, demonstrating idempotence. Host validation reported zero
+failures. Generated inventory is stored under ignored `evidence/` and must be
+reviewed before sharing.
+
+Applications use UTC internally. The host may display local time in
+`America/Los_Angeles`; its RTC is UTC and NTP synchronization is active.
