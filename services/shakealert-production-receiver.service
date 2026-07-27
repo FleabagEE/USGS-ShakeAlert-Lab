@@ -1,0 +1,30 @@
+[Unit]
+Description=ShakeAlert passive production receiver laboratory
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+ConditionPathExists=/opt/quakelogic/shakealert-lab/config/production/receiver.toml
+[Service]
+Type=simple
+User=shakealert
+Group=shakealert
+EnvironmentFile=/opt/quakelogic/shakealert-lab/config/lab.env
+Environment=PYTHONPATH=/opt/quakelogic/shakealert-lab/app
+ExecStart=/usr/bin/python3 -m shakealert_lab receiver --config /opt/quakelogic/shakealert-lab/config/production/receiver.toml
+Restart=on-failure
+RestartSec=10s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/opt/quakelogic/shakealert-lab/messages /opt/quakelogic/shakealert-lab/logs /opt/quakelogic/shakealert-lab/evidence
+[Install]
+WantedBy=multi-user.target

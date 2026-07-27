@@ -1,0 +1,3 @@
+# Native Message Capture
+
+`NativeCapture` wraps the immutable transport envelope. `RawMessageStore` writes canonical JSON with base64 payload/header bytes, payload size and SHA-256, UUID, UTC timestamps, endpoint/environment/protocol/destination, identifiers, redelivery, sequence, and content type. It uses exclusive temporary creation, `fsync`, hard-link creation without overwrite, directory `fsync`, and mode `0640`. Loading rechecks size and hash. Capture precedes validation; parser failure cannot remove the native record. Actual native header mappings and acknowledgment timing remain transport-specific.

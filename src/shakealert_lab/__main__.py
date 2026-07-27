@@ -1,3 +1,5 @@
-"""Command-line entry point placeholder."""
+"""Command-line entry point with mandatory safety enforcement."""
+from shakealert_lab.cli import main
 
-# TODO: Implement the application entry point in a later phase.
+if __name__ == "__main__":
+    raise SystemExit(main())

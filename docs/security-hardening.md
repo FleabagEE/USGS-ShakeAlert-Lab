@@ -1,0 +1,3 @@
+# Security Hardening
+
+Implemented: non-login service account, protected paths, fail-closed safety variable, non-symlink `0600` credential checks, bounded secret reads, structured redaction, audit watches, pinned current Python transport experiment, loopback dashboard enforcement, and hardened unit definitions. Pending verified deployment: endpoint egress rules, TLS/mTLS policy, credential least privilege, certificate renewal dates, dependency vulnerability review, log retention limits, and authorized service enablement. Units use `NoNewPrivileges`, strict filesystem protection, private devices/tmp, kernel/control-group protection, and bounded restart policy.

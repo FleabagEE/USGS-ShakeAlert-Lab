@@ -1,0 +1,3 @@
+# Failure Test Report
+
+Automated offline results cover invalid configuration, absent/unsafe credentials, missing safety interlock, oversized payloads, future timestamps, duplicate/redelivery and ordering state, atomic overwrite refusal, tampered capture hashes, loopback dashboard enforcement, bounded jittered backoff, heartbeat timeout, runtime saturation/failure/shutdown, and callback lifecycle failures. DNS, refusal, real TLS/auth/authorization, broker restart, live network interruption/latency/loss, real disk exhaustion, reboot, burst, and endurance tests remain blocked until an approved adapter and isolated endpoint/test harness exist.

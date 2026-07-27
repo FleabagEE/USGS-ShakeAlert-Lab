@@ -1,0 +1,10 @@
+/opt/quakelogic/shakealert-lab/logs/*.log /opt/quakelogic/shakealert-lab/logs/*/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    su shakealert shakealert
+    create 0640 shakealert shakealert
+}

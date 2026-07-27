@@ -64,5 +64,22 @@ done
 auditctl -l 2>/dev/null | grep -q 'shakealert_credentials' \
   && pass 'credential audit rule is loaded' || fail 'credential audit rule is not loaded'
 
+for unit_name in shakealert-scenario-receiver shakealert-production-receiver shakealert-lab-dashboard; do
+  [[ -f "/etc/systemd/system/${unit_name}.service" ]] \
+    && pass "${unit_name} unit is installed" || fail "${unit_name} unit is absent"
+  if systemctl is-enabled --quiet "${unit_name}.service"; then
+    fail "${unit_name} must remain disabled before endpoint approval"
+  else
+    pass "${unit_name} is disabled"
+  fi
+  if systemctl is-active --quiet "${unit_name}.service"; then
+    fail "${unit_name} must remain inactive before endpoint approval"
+  else
+    pass "${unit_name} is inactive"
+  fi
+done
+[[ -f "${LAB_ROOT}/app/shakealert_lab/cli.py" ]] \
+  && pass "application framework is deployed" || fail "application framework is absent"
+
 echo "RESULT: ${failures} failure(s)"
 exit "${failures}"

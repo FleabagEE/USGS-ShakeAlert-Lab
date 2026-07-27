@@ -11,7 +11,7 @@ Decision: **CONDITIONAL GO FOR PLATFORM BASELINE; FORMAL REVIEW PENDING**
   evidence, and message directories are mode `0750`.
 - The mandatory interlock rejects an absent value and every value other than
   literal `false`.
-- Repository and host security checks pass with zero failures.
+- Repository and host security checks pass with zero failures. Credential-independent receiver, capture, validation, normalization, replay, dashboard, reliability, security, and service frameworks are deployed but remain endpoint-inactive.
 - Audit rules cover credential, configuration, and service-definition changes.
 - No credential, operational-output pathway, USGS connection, or CUBE/PX-01
   modification was introduced.

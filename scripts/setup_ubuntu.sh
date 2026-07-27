@@ -92,12 +92,25 @@ fi
 chown root:"${SERVICE_GROUP}" "${SAFETY_ENV}"
 chmod 0640 "${SAFETY_ENV}"
 
+install -o root -g root -m 0644 "$(dirname "${BASH_SOURCE[0]}")/../config/logrotate.shakealert-lab" "/etc/logrotate.d/shakealert-lab"
+
 install -o root -g root -m 0640 /dev/null "${AUDIT_RULES}"
 {
   echo "-w ${LAB_ROOT}/credentials -p wa -k shakealert_credentials"
   echo "-w ${LAB_ROOT}/config -p wa -k shakealert_config"
   echo "-w ${LAB_ROOT}/services -p wa -k shakealert_services"
 } >"${AUDIT_RULES}"
+
+install -d -o root -g "${SERVICE_GROUP}" -m 0750 "${LAB_ROOT}/app"
+cp -a "$(dirname "${BASH_SOURCE[0]}")/../src/shakealert_lab" "${LAB_ROOT}/app/"
+chown -R root:"${SERVICE_GROUP}" "${LAB_ROOT}/app/shakealert_lab"
+find "${LAB_ROOT}/app/shakealert_lab" -type d -exec chmod 0750 {} +
+find "${LAB_ROOT}/app/shakealert_lab" -type f -exec chmod 0640 {} +
+for unit in "$(dirname "${BASH_SOURCE[0]}")/../services/"*.service; do
+  install -o root -g root -m 0644 "${unit}" "/etc/systemd/system/$(basename "${unit}")"
+  install -o root -g "${SERVICE_GROUP}" -m 0640 "${unit}" "${LAB_ROOT}/services/$(basename "${unit}")"
+done
+systemctl daemon-reload
 
 systemctl enable --now chrony
 systemctl enable --now auditd
