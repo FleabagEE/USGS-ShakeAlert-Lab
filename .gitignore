@@ -4,6 +4,7 @@ credentials/*
 config/*.env
 config/*.secret
 config/*credentials*
+config/*/receiver.toml
 *.key
 *.pem
 *.p12

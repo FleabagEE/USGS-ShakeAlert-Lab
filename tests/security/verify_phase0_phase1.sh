@@ -48,11 +48,50 @@ else
   pass 'no operational-output implementation found'
 fi
 
-if find "${REPO_ROOT}/credentials" -mindepth 1 ! -name .gitkeep -print -quit | grep -q .; then
-  fail 'credential directory contains non-placeholder files (contents not inspected)'
-else
-  pass 'credential directory contains no credential files'
-fi
+validate_protected_credential_tree() {
+  local entry relative mode
+
+  while IFS= read -r -d '' entry; do
+    relative="${entry#${REPO_ROOT}/}"
+    [[ "${relative}" == 'credentials/.gitkeep' ]] && continue
+
+    if [[ -L "${entry}" ]]; then
+      fail 'credential tree contains a symlink'
+      continue
+    fi
+    if ! git -C "${REPO_ROOT}" check-ignore -q -- "${relative}"; then
+      fail 'credential artifact is not ignored by Git'
+      continue
+    fi
+    if git -C "${REPO_ROOT}" ls-files --error-unmatch -- "${relative}" >/dev/null 2>&1; then
+      fail 'credential artifact is tracked by Git'
+      continue
+    fi
+
+    mode="$(stat -c '%a' "${entry}")"
+    if [[ -d "${entry}" ]]; then
+      [[ "${mode}" == '700' ]] ||
+        fail 'protected credential directory mode is not 0700'
+    elif [[ -f "${entry}" ]]; then
+      [[ "${mode}" == '600' ]] ||
+        fail 'protected credential file mode is not 0600'
+      [[ -s "${entry}" ]] ||
+        fail 'protected credential file is empty'
+      case "${relative}" in
+        credentials/scenario/username|credentials/scenario/password)
+          [[ "$(stat -c '%s' "${entry}")" -le 65536 ]] ||
+            fail 'protected broker credential exceeds the size limit'
+          ;;
+      esac
+    else
+      fail 'credential tree contains a non-regular artifact'
+    fi
+  done < <(find "${REPO_ROOT}/credentials" -mindepth 1 -print0)
+
+  pass 'credential tree validated by metadata only; protected contents were not read'
+}
+
+validate_protected_credential_tree
 
 credential_mode=$(stat -c '%a' "${REPO_ROOT}/credentials")
 [[ "${credential_mode}" == '700' ]] && pass 'credentials directory mode 0700' || fail "credentials directory mode is ${credential_mode}, expected 700"

@@ -6,22 +6,23 @@ This repository builds a passive Ubuntu laboratory for authorized ShakeAlert
 interface discovery. It must never activate physical outputs, publish to CUBE,
 or modify CUBE/PX-01 software.
 
-## Current status
+## Current Status
 
-| Specification phase | Status | Decision |
-|---|---|---|
-| Phase 0 — governance and safety controls | Technical host controls implemented; formal named review pending | Conditional go for baseline work only |
-| Phase 1 — Ubuntu platform baseline | Host provisioned and time synchronized; endpoint-specific network evidence pending | No-go for endpoint discovery |
-| Phases 2–17 | Not accepted | Blocked by approved inputs, credentials, connectivity, captures, or earlier phase gates |
+The credential-independent passive receiver, native-capture, validation,
+normalization, replay, observability, and fail-closed safety frameworks are
+implemented. Authorized checks against the Scenario Server verified DNS, TCP,
+the public TLS chain and hostname, TLS 1.3, and ActiveMQ OpenWire negotiation.
 
-The Ubuntu 24.04 development host has an isolated, non-login `shakealert`
-account and a protected `/opt/quakelogic/shakealert-lab` tree. Baseline packages,
-Chrony, auditd, rsyslog, permissions, and the fail-closed interlock are installed.
-No USGS endpoint has been contacted and no USGS credential has been installed.
+Broker authentication is currently blocked by invalid or unconfirmed broker
+credentials. The broker returned a sanitized `JMSSecurityException` indicating
+that the username or password was invalid. No subscription was created, no live
+Scenario message was received or captured, and no publishing or operational
+output occurred. Live Scenario Server integration is not complete. The project
+is awaiting USGS confirmation of the correct broker credentials and Scenario
+account authorization before another connection attempt.
 
-Existing `src/` code after Phase 1 is laboratory architecture scaffolding. The
-MQTT adapter is not evidence that USGS uses MQTT and must not be configured for
-an external endpoint until protocol discovery and approval are complete.
+Production connectivity remains untested and unauthorized. The offline MQTT
+adapter is not evidence that either USGS endpoint uses MQTT.
 
 ## Safety invariant
 
@@ -54,13 +55,17 @@ is shared.
 
 ## Current gate
 
-Before Phase 2, provide protected production and scenario access materials and
-approve endpoint-specific DNS/TCP/TLS checks. Required hostnames, ports,
-transport versions, destinations, VPN/proxy rules, allow-list requirements,
-and TLS SNI requirements must be verified without guessing. Formal Phase 0/1
-review also remains to be signed by named owners.
-
+Before live Scenario integration can proceed, USGS must confirm the broker
+credential pair and that the account is authorized for the assigned exact Event
+topic. Subscription and message-capture validation remain blocked. Production
+access, protocol, destinations, and authorization remain separate open gates.
 
 ## Credential-independent framework progress
 
-All endpoint-independent frameworks and required documentation templates are implemented. The transport registry deliberately contains no default USGS adapter. Receiver units fail closed unless an active reviewed configuration exists, explicit connection authorization is true, and a verified adapter is registered. Scenario execution, production traffic, TLS/authentication evidence, field discovery, and final CUBE selection remain blocked by authorized USGS access.
+All endpoint-independent frameworks and required documentation templates are
+implemented. The transport registry deliberately contains no default USGS
+adapter. Receiver units fail closed unless an active reviewed configuration
+exists, explicit connection authorization is true, and a verified adapter is
+registered. Scenario subscription, live capture, field discovery, production
+traffic, and final CUBE selection remain blocked by authorized USGS access and
+evidence.
