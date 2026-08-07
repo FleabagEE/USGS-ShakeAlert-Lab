@@ -81,29 +81,21 @@
   - issuing duplicate alerts;
   - allowing an old command to undo a newer command.
 
-  ## The repository’s disposition model
+## The Repository’s Disposition Model
 
-  The module defines these outcomes:
+The module defines these outcomes:
 
-   Disposition            Meaning
-  ━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   NEW                    First recognized message or event state
-  ─────────────────────  ─────────────────────────────────────────────────────────────────────
-   EXACT_DUPLICATE        Identical payload observed again without broker redelivery evidence
-  ─────────────────────  ─────────────────────────────────────────────────────────────────────
-   REDELIVERY             Identical payload observed with the broker’s redelivery indicator
-  ─────────────────────  ─────────────────────────────────────────────────────────────────────
-   NEWER_UPDATE           Sequence number is greater than the latest accepted sequence
-  ─────────────────────  ─────────────────────────────────────────────────────────────────────
-   STALE_UPDATE           Sequence equals the latest sequence but payload differs
-  ─────────────────────  ─────────────────────────────────────────────────────────────────────
-   OUT_OF_ORDER_UPDATE    Sequence is older than the latest observed sequence
-  ─────────────────────  ─────────────────────────────────────────────────────────────────────
-   CANCELLATION           Message represents cancellation
-  ─────────────────────  ─────────────────────────────────────────────────────────────────────
-   HEARTBEAT              Message represents health/liveness traffic
-  ─────────────────────  ─────────────────────────────────────────────────────────────────────
-   UNKNOWN                Available evidence cannot support a stronger classification
+| Disposition | Meaning |
+| :--- | :--- |
+| `NEW` | First recognized message or event state |
+| `EXACT_DUPLICATE` | Identical payload observed again without broker redelivery evidence |
+| `REDELIVERY` | Identical payload observed with the broker’s redelivery indicator |
+| `NEWER_UPDATE` | Sequence number is greater than the latest accepted sequence |
+| `STALE_UPDATE` | Sequence equals the latest sequence but payload differs |
+| `OUT_OF_ORDER_UPDATE` | Sequence is older than the latest observed sequence |
+| `CANCELLATION` | Message represents cancellation |
+| `HEARTBEAT` | Message represents health/liveness traffic |
+| `UNKNOWN` | Available evidence cannot support a stronger classification |
 
   This is a classification vocabulary, not an action policy.
 
