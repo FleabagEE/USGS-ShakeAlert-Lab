@@ -325,7 +325,7 @@ public final class ScenarioOpenWireReceiver {
                 new SanitizedRejectionStore.Retention(1000, 67108864L, Duration.ofDays(30)))
             : null;
         ScenarioReceiverService service = null;
-        Thread shutdownHook = null;
+        boolean shutdownCoordinated = false;
         try {
             ScenarioReceiverService.InstanceLock instanceLock =
                 ScenarioReceiverService.acquireInstanceLock(
@@ -361,30 +361,22 @@ public final class ScenarioOpenWireReceiver {
                     }
                 },
                 healthStatus == null ? snapshot -> {} : healthStatus,
-                instanceLock);
-            ScenarioReceiverService ownedService = service;
-            shutdownHook = new Thread(() -> {
-                ownedService.requestShutdown();
-                try {
-                    ownedService.awaitCoordinatorTeardown(Duration.ofSeconds(35));
-                } catch (InterruptedException ignored) {
-                    Thread.currentThread().interrupt();
-                }
-            }, "scenario-receiver-shutdown-request");
-            Runtime.getRuntime().addShutdownHook(shutdownHook);
-            service.start();
-            System.out.println("PROTOCOL=ActiveMQ OpenWire");
-            System.out.println("PROTOCOL_VERSION=12");
-            System.out.println("HOST=" + endpoint.host());
-            System.out.println("PORT=" + endpoint.port());
-            System.out.println("AUTHENTICATION=success");
-            System.out.println("SUBSCRIPTION=" + topic);
-            System.out.println("LISTENER_STATE=connected_authenticated_subscribed_waiting");
-            System.out.println("CAPTURE_DIRECTORY=" + captureDirectory.toAbsolutePath());
-            System.out.flush();
-            service.awaitShutdownRequest();
-            ScenarioReceiverService.LifecycleState finalState =
-                service.stop(Duration.ofSeconds(30));
+                instanceLock, event -> lifecycle(event, accountId, topic));
+            ScenarioReceiverProcessLifecycle processLifecycle =
+                new ScenarioReceiverProcessLifecycle(
+                    service, Duration.ofSeconds(30), Duration.ofSeconds(35));
+            ScenarioReceiverService.LifecycleState finalState = processLifecycle.run(() -> {
+                System.out.println("PROTOCOL=ActiveMQ OpenWire");
+                System.out.println("PROTOCOL_VERSION=12");
+                System.out.println("HOST=" + endpoint.host());
+                System.out.println("PORT=" + endpoint.port());
+                System.out.println("AUTHENTICATION=success");
+                System.out.println("SUBSCRIPTION=" + topic);
+                System.out.println("LISTENER_STATE=connected_authenticated_subscribed_waiting");
+                System.out.println("CAPTURE_DIRECTORY=" + captureDirectory.toAbsolutePath());
+                System.out.flush();
+            });
+            shutdownCoordinated = true;
             if (finalState == ScenarioReceiverService.LifecycleState.FAILED) {
                 throw new IOException("Scenario receiver service failed");
             }
@@ -392,16 +384,10 @@ public final class ScenarioOpenWireReceiver {
             reportBrokerFailure(error, username, password, diagnosticReported);
             throw error;
         } finally {
-            if (service != null && service.state() != ScenarioReceiverService.LifecycleState.STOPPED) {
+            if (!shutdownCoordinated && service != null
+                    && service.state() != ScenarioReceiverService.LifecycleState.STOPPED) {
                 service.requestShutdown();
                 service.stop(Duration.ofSeconds(30));
-            }
-            if (shutdownHook != null) {
-                try {
-                    Runtime.getRuntime().removeShutdownHook(shutdownHook);
-                } catch (IllegalStateException ignored) {
-                    // JVM shutdown is already in progress; the hook only requests shutdown.
-                }
             }
             java.util.Arrays.fill(username, '\0');
             java.util.Arrays.fill(password, '\0');

@@ -54,12 +54,15 @@ def test_sigterm_requests_coordinator_shutdown_and_timeout_ordering() -> None:
     assert "KillSignal=SIGTERM" in UNIT_TEXT
     assert "TimeoutStopSec=45s" in UNIT_TEXT
     assert "SendSIGKILL=no" in UNIT_TEXT
-    assert "ownedService.requestShutdown()" in (
-        ROOT / "tools" / "ScenarioOpenWireReceiver.java"
-    ).read_text(encoding="utf-8")
-    assert "service.stop(Duration.ofSeconds(30))" in (
-        ROOT / "tools" / "ScenarioOpenWireReceiver.java"
-    ).read_text(encoding="utf-8")
+    process = (ROOT / "tools" / "ScenarioReceiverProcessLifecycle.java").read_text(encoding="utf-8")
+    receiver = (ROOT / "tools" / "ScenarioOpenWireReceiver.java").read_text(encoding="utf-8")
+    assert "Signal.handle(termSignal, ignored -> service.requestShutdown())" in process
+    assert "service.awaitShutdownRequest()" in process
+    assert "service.stop(shutdownDeadline)" in process
+    assert "coordinatorComplete.await" in process
+    assert "System.exit" not in process
+    assert "Runtime.halt" not in process
+    assert "Duration.ofSeconds(30), Duration.ofSeconds(35)" in receiver
 
 
 def test_hardening_has_documented_compatible_controls() -> None:

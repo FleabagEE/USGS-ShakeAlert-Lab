@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 import javax.jms.Connection;
 import javax.jms.Message;
@@ -76,6 +77,7 @@ final class ScenarioReceiverService {
     private final CaptureHandler captureHandler;
     private final EnvelopeHandler envelopeHandler;
     private final HealthSink healthSink;
+    private final Consumer<String> lifecycleSink;
     private final InstanceLock instanceLock;
     private final long generation;
     private final Instant processStartedUtc;
@@ -102,6 +104,8 @@ final class ScenarioReceiverService {
     private boolean asyncJmsError;
     private String lastErrorCategory;
     private Instant lastErrorUtc;
+    private boolean callbackAdmissionClosedReported;
+    private boolean callbackDrainCompleteReported;
 
     ScenarioReceiverService(
         ActiveMQConnectionFactory factory,
@@ -113,6 +117,21 @@ final class ScenarioReceiverService {
         HealthSink healthSink,
         InstanceLock instanceLock
     ) {
+        this(factory, accountId, endpointName, exactDestination, captureHandler,
+            envelopeHandler, healthSink, instanceLock, ignored -> {});
+    }
+
+    ScenarioReceiverService(
+        ActiveMQConnectionFactory factory,
+        String accountId,
+        String endpointName,
+        String exactDestination,
+        CaptureHandler captureHandler,
+        EnvelopeHandler envelopeHandler,
+        HealthSink healthSink,
+        InstanceLock instanceLock,
+        Consumer<String> lifecycleSink
+    ) {
         this.factory = Objects.requireNonNull(factory, "factory");
         this.accountId = Objects.requireNonNull(accountId, "accountId");
         this.endpointName = Objects.requireNonNull(endpointName, "endpointName");
@@ -121,6 +140,7 @@ final class ScenarioReceiverService {
         this.envelopeHandler = Objects.requireNonNull(envelopeHandler, "envelopeHandler");
         this.healthSink = Objects.requireNonNull(healthSink, "healthSink");
         this.instanceLock = Objects.requireNonNull(instanceLock, "instanceLock");
+        this.lifecycleSink = Objects.requireNonNull(lifecycleSink, "lifecycleSink");
         this.generation = NEXT_GENERATION.incrementAndGet();
         this.processStartedUtc = Instant.now();
         this.stateEnteredUtc = processStartedUtc;
@@ -194,8 +214,11 @@ final class ScenarioReceiverService {
     }
 
     void requestShutdown() {
+        boolean firstRequest;
         synchronized (monitor) {
+            firstRequest = !shutdownRequested;
             shutdownRequested = true;
+            if (firstRequest) emitLifecycle("SHUTDOWN_REQUESTED");
             publishHealthLocked();
             monitor.notifyAll();
         }
@@ -231,14 +254,15 @@ final class ScenarioReceiverService {
         long remainingNanos = deadline.toNanos();
         long started = System.nanoTime();
 
+        requestShutdown();
         synchronized (monitor) {
-            shutdownRequested = true;
             if (state == LifecycleState.STOPPED) return state;
             if (state != LifecycleState.FAILED && state != LifecycleState.STOPPING) {
                 transition(LifecycleState.STOPPING);
             }
             callbackAdmissionOpen = false;
         }
+        reportCallbackAdmissionClosed();
 
         closeConsumer();
 
@@ -260,6 +284,7 @@ final class ScenarioReceiverService {
                 return state;
             }
         }
+        reportCallbackDrainComplete();
 
         closeSession();
         closeConnection();
@@ -422,8 +447,10 @@ final class ScenarioReceiverService {
             }
         }
         synchronized (monitor) {
+            boolean newlyClosed = !consumerClosed;
             consumerClosed = true;
             subscribed = false;
+            if (newlyClosed) emitLifecycle("CONSUMER_CLOSED");
         }
     }
 
@@ -442,8 +469,10 @@ final class ScenarioReceiverService {
             }
         }
         synchronized (monitor) {
+            boolean newlyClosed = !sessionClosed;
             sessionClosed = true;
             authenticated = false;
+            if (newlyClosed) emitLifecycle("SESSION_CLOSED");
         }
     }
 
@@ -462,15 +491,20 @@ final class ScenarioReceiverService {
             }
         }
         synchronized (monitor) {
+            boolean newlyClosed = !connectionClosed;
             connectionClosed = true;
             connectionStarted = false;
             connected = false;
+            if (newlyClosed) emitLifecycle("CONNECTION_CLOSED");
         }
     }
 
     private void closeInstanceLock() {
         try {
-            if (!instanceLock.released()) instanceLock.close();
+            if (!instanceLock.released()) {
+                instanceLock.close();
+                emitLifecycle("INSTANCE_LOCK_RELEASED");
+            }
         } catch (Exception error) {
             fail("instance_lock_release", false);
         }
@@ -495,6 +529,33 @@ final class ScenarioReceiverService {
         stateEnteredUtc = Instant.now();
         stateHistory.add(next);
         publishHealthLocked();
+        if (next == LifecycleState.STOPPING || next == LifecycleState.STOPPED) {
+            emitLifecycle(next.name());
+        }
+    }
+
+    private void reportCallbackAdmissionClosed() {
+        synchronized (monitor) {
+            if (callbackAdmissionClosedReported) return;
+            callbackAdmissionClosedReported = true;
+        }
+        emitLifecycle("CALLBACK_ADMISSION_CLOSED");
+    }
+
+    private void reportCallbackDrainComplete() {
+        synchronized (monitor) {
+            if (callbackDrainCompleteReported) return;
+            callbackDrainCompleteReported = true;
+        }
+        emitLifecycle("CALLBACK_DRAIN_COMPLETE");
+    }
+
+    private void emitLifecycle(String event) {
+        try {
+            lifecycleSink.accept(event);
+        } catch (RuntimeException ignored) {
+            // Sanitized lifecycle observability must not interrupt resource teardown.
+        }
     }
 
     static boolean legalTransition(LifecycleState from, LifecycleState to) {

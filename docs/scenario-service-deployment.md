@@ -19,9 +19,11 @@ The service runs as `quakelogic` because established checks require that credent
 
 ## Shutdown
 
-systemd sends `SIGTERM`. The JVM hook only calls `requestShutdown()` and waits; the coordinator owns teardown. The internal drain deadline is 30 seconds. `TimeoutStopSec=45s` leaves 15 seconds for coordination and final status publication.
+systemd sends `SIGTERM`. `ScenarioReceiverProcessLifecycle` installs a narrowly scoped Java 21 TERM handler that calls only `requestShutdown()`; the main thread wakes and owns all blocking JMS teardown. A bounded JVM shutdown hook remains as fallback for non-TERM JVM shutdown and likewise performs no JMS work. The internal drain deadline is 30 seconds; the hook wait is 35 seconds; `TimeoutStopSec=45s` leaves 10 seconds for final process and systemd accounting.
 
-`SendSIGKILL=no` keeps SIGKILL out of normal timeout handling. If the deadline expires, health remains `FAILED`, never falsely `STOPPED`; systemd reports a timeout and leaves the process for inspection. Review health and journal output, preserve captures, and explicitly authorize any escalated termination.
+The TERM bridge uses `sun.misc.Signal` from the JDK `jdk.unsupported` module. This internal API is intentionally isolated in one class and covered by a real subprocess SIGTERM test. It is necessary because the standard Java shutdown-hook API preserves signal-derived exit status 143 even after successful hook coordination; the service contract requires normal TERM teardown to return from `main()` with exit code 0. No `System.exit()`, `Runtime.halt()`, blocking JMS call, reconnect, or broker operation occurs in the TERM handler.
+
+`SendSIGKILL=no` keeps SIGKILL out of normal timeout handling. Successful TERM reaches `STOPPED` and returns from `main()` with exit code 0. If the deadline expires, health remains `FAILED`, never falsely `STOPPED`, and the process exits nonzero. Review health and journal output, preserve captures, and explicitly authorize any escalated termination.
 
 ## Health and readiness
 

@@ -11,6 +11,9 @@ process.
 - [ADR 0003: Native Preservation Before Interpretation](0003-native-preservation-before-interpretation.md)
 - [ADR 0004: Runtime Startup, Shutdown, and Failure](0004-runtime-startup-shutdown-and-failure.md)
 - [ADR 0005: Scenario Receiver Service Ownership](0005-scenario-receiver-service-ownership.md)
+- [ADR 0006: MessageEnvelope and Safe Event Parsing](0006-message-envelope-and-event-parsing.md)
+- [ADR 0007: Repository-managed Scenario Service](0007-scenario-service-deployment.md)
+- [ADR 0008: Scenario SIGTERM Coordination](0008-scenario-sigterm-coordination.md)
 
-All four Loop 3.2 ADRs are accepted. Protocol-dependent behavior remains
-deferred until the native USGS protocol is verified.
+The listed receiver ADRs are accepted. Production activation and any new
+Scenario connection remain separately authorized.

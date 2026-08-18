@@ -76,7 +76,8 @@ def test_no_retry_fallback_publishing_or_production_path() -> None:
 def test_authentication_and_callback_lifecycle_ordering() -> None:
     helper = SOURCE[SOURCE.index("static AuthenticatedSession establishAuthenticatedSession") : SOURCE.index("static MessageConsumer createPassiveTopicConsumer")]
     assert helper.index("connection.createSession") < helper.index('events.accept("AUTHENTICATED")')
-    callback = SOURCE[SOURCE.index("(message, generation) -> {") : SOURCE.index("instanceLock);")]
+    callback_start = SOURCE.index("(message, generation) -> {")
+    callback = SOURCE[callback_start : SOURCE.index("healthStatus == null", callback_start)]
     assert callback.index("beforePayloadValidation") < callback.index("NativeCaptureCommit committed = capture(")
     service_callback = SERVICE_SOURCE[
         SERVICE_SOURCE.index("createdConsumer.setMessageListener") :
@@ -90,3 +91,8 @@ def test_authentication_and_callback_lifecycle_ordering() -> None:
         assert state in SERVICE_SOURCE
     for event in ("MESSAGE_CALLBACK", "CAPTURE_COMMITTED"):
         assert f'"{event}"' in SOURCE
+    for event in ("SHUTDOWN_REQUESTED", "CALLBACK_ADMISSION_CLOSED",
+                  "CONSUMER_CLOSED", "CALLBACK_DRAIN_COMPLETE", "SESSION_CLOSED",
+                  "CONNECTION_CLOSED", "INSTANCE_LOCK_RELEASED"):
+        assert f'"{event}"' in SERVICE_SOURCE
+    assert "next == LifecycleState.STOPPING || next == LifecycleState.STOPPED" in SERVICE_SOURCE

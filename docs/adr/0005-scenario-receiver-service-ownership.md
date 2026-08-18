@@ -22,8 +22,9 @@ An appropriate failure from a non-terminal state latches `FAILED`. Illegal
 backward transitions fail closed. A failed instance cannot restart or reconnect
 itself.
 
-The JVM shutdown hook only requests shutdown and waits for a bounded coordinator
-completion condition. The main service coordinator closes callback admission,
+The systemd SIGTERM bridge handles TERM before JVM shutdown, calls only `requestShutdown()`,
+and wakes the main service coordinator. The JVM shutdown hook remains a bounded fallback:
+it also only requests shutdown and waits for coordinator completion. The main coordinator closes callback admission,
 closes the consumer, waits for already-admitted capture callbacks up to the
 deadline, then closes the session and connection and releases the instance
 lock. Resource close order is always consumer, session, connection.
