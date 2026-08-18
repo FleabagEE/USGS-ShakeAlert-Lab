@@ -3,12 +3,15 @@ set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 action=${1:-}
+java_bin=/usr/bin/java
 
 fail() { printf 'java-receiver: %s\n' "$1" >&2; exit 64; }
 
+[[ -x "$java_bin" ]] || fail '/usr/bin/java is unavailable'
+
 verify_java() {
   local java_version
-  java_version=$(java -version 2>&1 | head -n 1)
+  java_version=$("$java_bin" -version 2>&1 | head -n 1)
   [[ "$java_version" == *'"21.'* ]] || fail 'Java 21 is required'
 }
 
@@ -100,7 +103,7 @@ case "$action" in
     shift
     verify_runtime
     classpath=$(<"$repo_root/target/runtime-classpath.txt")
-    exec java -cp "$repo_root/target/classes:$classpath" ScenarioOpenWireReceiver "$@"
+    exec "$java_bin" -cp "$repo_root/target/classes:$classpath" ScenarioOpenWireReceiver "$@"
     ;;
   *) fail 'usage: bin/java-receiver build|test|verify-runtime|run [arguments]' ;;
 esac

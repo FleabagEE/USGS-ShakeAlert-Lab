@@ -13,6 +13,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.time.Duration;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -77,6 +78,35 @@ public final class ScenarioOpenWireReceiver {
     record CredentialFiles(Path directory, Path username, Path password) {}
 
     record AuthenticatedSession(Connection connection, Session session) {}
+
+    static final class NativeCaptureCommit {
+        private final byte[] payload;
+        private final Instant receivedAtUtc;
+        private final String captureId;
+        private final String captureReference;
+        private final String jmsMessageId;
+        private final Instant brokerTimestamp;
+        private final boolean redelivered;
+
+        NativeCaptureCommit(byte[] payload, Instant receivedAtUtc, String captureId,
+                String captureReference, String jmsMessageId, Instant brokerTimestamp,
+                boolean redelivered) {
+            this.payload = payload.clone();
+            this.receivedAtUtc = receivedAtUtc;
+            this.captureId = captureId;
+            this.captureReference = captureReference;
+            this.jmsMessageId = jmsMessageId;
+            this.brokerTimestamp = brokerTimestamp;
+            this.redelivered = redelivered;
+        }
+        byte[] payload() { return payload.clone(); }
+        Instant receivedAtUtc() { return receivedAtUtc; }
+        String captureId() { return captureId; }
+        String captureReference() { return captureReference; }
+        String jmsMessageId() { return jmsMessageId; }
+        Instant brokerTimestamp() { return brokerTimestamp; }
+        boolean redelivered() { return redelivered; }
+    }
 
     @FunctionalInterface
     interface ConnectionSupplier { Connection create() throws Exception; }
@@ -251,11 +281,11 @@ public final class ScenarioOpenWireReceiver {
             authenticateOnly(endpoint, args[1]);
             return;
         }
-        if (args.length != 7 || !"--subscribe".equals(args[0])) {
+        if ((args.length != 7 && args.length != 9) || !"--subscribe".equals(args[0])) {
             throw new IllegalArgumentException(
                 "expected either --authenticate-only account-id "
                 + "or --subscribe host port account-id exact-event-topic "
-                + "capture-root maximum-payload-bytes");
+                + "capture-root maximum-payload-bytes [health-file rejection-directory]");
         }
         Endpoint endpoint = validatedEndpoint(args[1], args[2]);
         String accountId = args[3];
@@ -284,34 +314,65 @@ public final class ScenarioOpenWireReceiver {
         factory.setAlwaysSyncSend(true);
         factory.setTrustAllPackages(false);
 
-        Connection connection = null;
-        Session session = null;
-        MessageConsumer consumer = null;
+        ShakeAlertEventParser parser = new ShakeAlertEventParser(
+            new ShakeAlertEventParser.Limits(maximumPayloadBytes, 50000, 32, 100000,
+                maximumPayloadBytes));
+        ShakeAlertEventProcessor processor = new ShakeAlertEventProcessor(parser);
+        LocalHealthStatus healthStatus = args.length == 9
+            ? new LocalHealthStatus(Path.of(args[7]), processor) : null;
+        SanitizedRejectionStore rejectionStore = args.length == 9
+            ? new SanitizedRejectionStore(Path.of(args[8]),
+                new SanitizedRejectionStore.Retention(1000, 67108864L, Duration.ofDays(30)))
+            : null;
+        ScenarioReceiverService service = null;
+        Thread shutdownHook = null;
         try {
-            AuthenticatedSession authenticated = establishAuthenticatedSession(
-                factory::createConnection, candidate -> candidate.setExceptionListener(error -> {
-                    lifecycle("ASYNC_EXCEPTION", accountId, topic);
-                    System.err.println("LISTENER_STATE=failed");
-                    System.err.println("FAILURE_CATEGORY=connection");
-                    reportBrokerFailure(error, username, password, diagnosticReported);
-                }), event -> lifecycle(event, accountId, topic));
-            connection = authenticated.connection();
-            session = authenticated.session();
-            consumer = createPassiveTopicConsumer(session, topic);
-            lifecycle("CONSUMER_CREATED", accountId, topic);
-            consumer.setMessageListener(message -> {
-                beforePayloadValidation(event -> lifecycle(event, accountId, topic), () -> {});
-                try {
-                    capture(message, captureDirectory, topic, maximumPayloadBytes);
+            ScenarioReceiverService.InstanceLock instanceLock =
+                ScenarioReceiverService.acquireInstanceLock(
+                    args.length == 9
+                        ? Path.of(args[7]).toAbsolutePath().normalize().getParent()
+                            .resolve("scenario-receiver.lock")
+                        : Path.of(args[5]).resolve(".scenario-receiver.lock"));
+            service = new ScenarioReceiverService(
+                factory, accountId, "scenario-openwire", topic,
+                (message, generation) -> {
+                    beforePayloadValidation(
+                        event -> lifecycle(event, accountId, topic), () -> {});
+                    NativeCaptureCommit committed = capture(
+                        message, captureDirectory, topic, maximumPayloadBytes);
                     lifecycle("CAPTURE_COMMITTED", accountId, topic);
-                    // Deliberately unacknowledged until broker acknowledgment semantics are verified.
-                } catch (Exception error) {
-                    System.err.println("CAPTURE_STATE=failed");
-                    System.err.println("FAILURE_CATEGORY=capture");
+                    return new MessageEnvelope(
+                        committed.payload(), committed.receivedAtUtc(), committed.captureId(),
+                        committed.captureReference(), "scenario",
+                        endpoint.host() + ":" + endpoint.port(), topic, accountId,
+                        committed.jmsMessageId(), committed.brokerTimestamp(),
+                        committed.redelivered(),
+                        Map.of("protocol", "ActiveMQ OpenWire", "protocol_version", "12"),
+                        generation);
+                },
+                envelope -> {
+                    ShakeAlertEventProcessor.Outcome outcome = processor.process(envelope);
+                    lifecycle(outcome.rejection() == null ? "EVENT_PARSED"
+                        : "EVENT_REJECTED_" + outcome.rejection().name(), accountId, topic);
+                    if (outcome.rejection() != null
+                            && outcome.rejection() != ShakeAlertEventParser.FailureCategory.PARSER_FAILURE
+                            && rejectionStore != null) {
+                        rejectionStore.record(envelope, outcome);
+                    }
+                },
+                healthStatus == null ? snapshot -> {} : healthStatus,
+                instanceLock);
+            ScenarioReceiverService ownedService = service;
+            shutdownHook = new Thread(() -> {
+                ownedService.requestShutdown();
+                try {
+                    ownedService.awaitCoordinatorTeardown(Duration.ofSeconds(35));
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
                 }
-            });
-            connection.start();
-            lifecycle("CONNECTION_STARTED", accountId, topic);
+            }, "scenario-receiver-shutdown-request");
+            Runtime.getRuntime().addShutdownHook(shutdownHook);
+            service.start();
             System.out.println("PROTOCOL=ActiveMQ OpenWire");
             System.out.println("PROTOCOL_VERSION=12");
             System.out.println("HOST=" + endpoint.host());
@@ -321,19 +382,26 @@ public final class ScenarioOpenWireReceiver {
             System.out.println("LISTENER_STATE=connected_authenticated_subscribed_waiting");
             System.out.println("CAPTURE_DIRECTORY=" + captureDirectory.toAbsolutePath());
             System.out.flush();
-            Object wait = new Object();
-            synchronized (wait) {
-                while (true) wait.wait();
+            service.awaitShutdownRequest();
+            ScenarioReceiverService.LifecycleState finalState =
+                service.stop(Duration.ofSeconds(30));
+            if (finalState == ScenarioReceiverService.LifecycleState.FAILED) {
+                throw new IOException("Scenario receiver service failed");
             }
         } catch (Exception error) {
             reportBrokerFailure(error, username, password, diagnosticReported);
             throw error;
         } finally {
-            if (consumer != null) consumer.close();
-            if (session != null) session.close();
-            if (connection != null) {
-                connection.close();
-                lifecycle("DISCONNECTED", accountId, topic);
+            if (service != null && service.state() != ScenarioReceiverService.LifecycleState.STOPPED) {
+                service.requestShutdown();
+                service.stop(Duration.ofSeconds(30));
+            }
+            if (shutdownHook != null) {
+                try {
+                    Runtime.getRuntime().removeShutdownHook(shutdownHook);
+                } catch (IllegalStateException ignored) {
+                    // JVM shutdown is already in progress; the hook only requests shutdown.
+                }
             }
             java.util.Arrays.fill(username, '\0');
             java.util.Arrays.fill(password, '\0');
@@ -488,7 +556,7 @@ public final class ScenarioOpenWireReceiver {
         return false;
     }
 
-    private static void capture(
+    static NativeCaptureCommit capture(
         Message message, Path directory, String topic, int maximumPayloadBytes
     ) throws Exception {
         Instant received = Instant.now();
@@ -548,6 +616,11 @@ public final class ScenarioOpenWireReceiver {
             Files.move(temporary, target);
         }
         try (FileChannel dir = FileChannel.open(directory, StandardOpenOption.READ)) { dir.force(true); }
+        Instant brokerTimestamp = message.getJMSTimestamp() > 0
+            ? Instant.ofEpochMilli(message.getJMSTimestamp()) : null;
+        return new NativeCaptureCommit(
+            payload, received, id, target.toAbsolutePath().normalize().toString(),
+            message.getJMSMessageID(), brokerTimestamp, message.getJMSRedelivered());
     }
 
     private static byte[] payload(Message message, int maximumPayloadBytes) throws Exception {

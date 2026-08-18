@@ -10,6 +10,7 @@ process.
 - [ADR 0002: Bounded FIFO Queue and Single Worker](0002-bounded-fifo-queue-and-single-worker.md)
 - [ADR 0003: Native Preservation Before Interpretation](0003-native-preservation-before-interpretation.md)
 - [ADR 0004: Runtime Startup, Shutdown, and Failure](0004-runtime-startup-shutdown-and-failure.md)
+- [ADR 0005: Scenario Receiver Service Ownership](0005-scenario-receiver-service-ownership.md)
 
 All four Loop 3.2 ADRs are accepted. Protocol-dependent behavior remains
 deferred until the native USGS protocol is verified.

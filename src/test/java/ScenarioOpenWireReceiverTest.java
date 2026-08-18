@@ -186,7 +186,8 @@ final class ScenarioOpenWireReceiverTest {
     }
 
     @Test void receiverHasNoRetryFallbackPublishingProductionOrClientIdPath() throws Exception {
-        String source = Files.readString(Path.of("tools", "ScenarioOpenWireReceiver.java"));
+        String source = Files.readString(Path.of("tools", "ScenarioOpenWireReceiver.java"))
+            + Files.readString(Path.of("tools", "ScenarioReceiverService.java"));
         for (String forbidden : List.of("createProducer", "MessageProducer", "setClientID",
                 "failover:", "reconnect", "production.eew", "credential-directory", "credential-root")) {
             assertFalse(source.contains(forbidden));

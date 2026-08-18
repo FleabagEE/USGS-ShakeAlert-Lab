@@ -53,7 +53,8 @@ def test_runtime_verifier_is_non_executing_and_fail_closed() -> None:
     wrapper = (ROOT / "bin/java-receiver").read_text()
     verify = wrapper[wrapper.index("verify_runtime()") : wrapper.index("case \"$action\"")]
     assert "verify_java" in verify
-    assert "java -version" in wrapper
+    assert "java_bin=/usr/bin/java" in wrapper
+    assert '"$java_bin" -version' in wrapper
     assert "jar tf" in verify
     assert "ScenarioOpenWireReceiver.class" in verify
     assert "exec java" not in verify

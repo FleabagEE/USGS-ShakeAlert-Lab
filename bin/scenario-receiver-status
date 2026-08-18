@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+health_file=${1:-/run/shakealert-scenario-receiver/health.json}
+if [[ ! -f "$health_file" || -L "$health_file" ]]; then
+  printf '%s\n' 'READY=no'
+  exit 1
+fi
+if jq -e '
+  .lifecycle_state == "RUNNING" and
+  .connected == true and
+  .authenticated == true and
+  .subscribed == true and
+  .connection_started == true and
+  .async_jms_error == false and
+  .parser_failed == false
+' "$health_file" >/dev/null; then
+  printf '%s\n' 'READY=yes'
+  exit 0
+fi
+printf '%s\n' 'READY=no'
+exit 1

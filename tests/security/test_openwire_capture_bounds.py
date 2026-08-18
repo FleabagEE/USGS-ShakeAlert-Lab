@@ -4,6 +4,9 @@ from pathlib import Path
 SOURCE = (
     Path(__file__).parents[2] / "tools" / "ScenarioOpenWireReceiver.java"
 ).read_text()
+SERVICE_SOURCE = (
+    Path(__file__).parents[2] / "tools" / "ScenarioReceiverService.java"
+).read_text()
 
 
 def test_openwire_native_capture_is_bounded_and_committed_atomically() -> None:
@@ -22,8 +25,11 @@ def test_openwire_native_capture_is_bounded_and_committed_atomically() -> None:
 
 
 def test_callback_precedes_validation_and_commit_event_follows_capture() -> None:
-    callback = SOURCE[
-        SOURCE.index("consumer.setMessageListener") : SOURCE.index("connection.start()")
+    callback = SOURCE[SOURCE.index("(message, generation) -> {") : SOURCE.index("instanceLock);")]
+    assert callback.index("beforePayloadValidation") < callback.index("NativeCaptureCommit committed = capture(")
+    assert callback.index("NativeCaptureCommit committed = capture(") < callback.index('lifecycle("CAPTURE_COMMITTED"')
+    listener = SERVICE_SOURCE[
+        SERVICE_SOURCE.index("createdConsumer.setMessageListener") :
+        SERVICE_SOURCE.index("createdConnection.start()")
     ]
-    assert callback.index("beforePayloadValidation") < callback.index("capture(message")
-    assert callback.index("capture(message") < callback.index('lifecycle("CAPTURE_COMMITTED"')
+    assert "acceptCallback(activationGeneration, message)" in listener

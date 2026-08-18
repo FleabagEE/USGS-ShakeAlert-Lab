@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).parents[2]
 SOURCE = (ROOT / "tools" / "ScenarioOpenWireReceiver.java").read_text()
+SERVICE_SOURCE = (ROOT / "tools" / "ScenarioReceiverService.java").read_text()
 WRAPPER = (ROOT / "bin" / "java-receiver").read_text()
 
 
@@ -52,11 +53,11 @@ def test_credentials_are_fail_closed_and_account_scoped() -> None:
 
 
 def test_consumer_is_exact_nondurable_topic_without_selector_or_no_local() -> None:
-    assert "session.createTopic(topic)" in SOURCE
-    assert "session.createConsumer(destination, null, false)" in SOURCE
-    assert "createQueue(" not in SOURCE
-    assert "createDurable" not in SOURCE
-    assert "setClientID" not in SOURCE
+    assert "createdSession.createTopic(exactDestination)" in SERVICE_SOURCE
+    assert "createdSession.createConsumer(topic, null, false)" in SERVICE_SOURCE
+    assert "createQueue(" not in SOURCE + SERVICE_SOURCE
+    assert "createDurable" not in SOURCE + SERVICE_SOURCE
+    assert "setClientID" not in SOURCE + SERVICE_SOURCE
     expected = "eew" + chr(92) * 2 + ".test_[A-Za-z0-9][A-Za-z0-9-]{0,63}" + chr(92) * 2 + ".dm" + chr(92) * 2 + ".data"
     assert expected in SOURCE
 
@@ -69,23 +70,23 @@ def test_no_retry_fallback_publishing_or_production_path() -> None:
         "reconnect",
         "production.eew",
     ):
-        assert forbidden not in SOURCE
+        assert forbidden not in SOURCE + SERVICE_SOURCE
 
 
 def test_authentication_and_callback_lifecycle_ordering() -> None:
     helper = SOURCE[SOURCE.index("static AuthenticatedSession establishAuthenticatedSession") : SOURCE.index("static MessageConsumer createPassiveTopicConsumer")]
     assert helper.index("connection.createSession") < helper.index('events.accept("AUTHENTICATED")')
-    callback = SOURCE[SOURCE.index("consumer.setMessageListener") : SOURCE.index("connection.start()")]
-    assert callback.index("beforePayloadValidation") < callback.index("capture(message")
-    for event in (
-        "CONNECTED",
-        "AUTHENTICATED",
-        "SESSION_CREATED",
-        "CONSUMER_CREATED",
-        "CONNECTION_STARTED",
-        "MESSAGE_CALLBACK",
-        "CAPTURE_COMMITTED",
-        "ASYNC_EXCEPTION",
-        "DISCONNECTED",
+    callback = SOURCE[SOURCE.index("(message, generation) -> {") : SOURCE.index("instanceLock);")]
+    assert callback.index("beforePayloadValidation") < callback.index("NativeCaptureCommit committed = capture(")
+    service_callback = SERVICE_SOURCE[
+        SERVICE_SOURCE.index("createdConsumer.setMessageListener") :
+        SERVICE_SOURCE.index("createdConnection.start()")
+    ]
+    assert "acceptCallback(activationGeneration, message)" in service_callback
+    for state in (
+        "STARTING", "CONNECTING", "AUTHENTICATING", "SUBSCRIBED",
+        "RUNNING", "STOPPING", "STOPPED", "FAILED",
     ):
+        assert state in SERVICE_SOURCE
+    for event in ("MESSAGE_CALLBACK", "CAPTURE_COMMITTED"):
         assert f'"{event}"' in SOURCE

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<event_message message_type="update" version="7" category="test"
+    alg_vers="2.3.23 2020-04-01" orig_sys="EEWScenario"
+    ref_id="0" ref_src="" instance="fixture-instance"
+    timestamp="2026-08-18T15:42:28.000Z">
+  <core_info id="fixture-event">
+    <mag units="Mw">4.6</mag>
+    <lat units="deg">33.04</lat>
+    <lon units="deg">-115.60</lon>
+    <depth units="km">8.0</depth>
+    <orig_time units="UTC">2026-08-18T15:42:24.000Z</orig_time>
+    <likelihood>0.93</likelihood>
+    <num_stations>5</num_stations>
+  </core_info>
+  <contributors>
+    <contributor alg_name="fixture-algorithm" alg_version="1"
+        alg_instance="fixture-instance" category="test"
+        event_id="fixture-event" version="7"/>
+  </contributors>
+  <gm_info>
+    <gmpoint_obs><pga_obs number="0"/></gmpoint_obs>
+  </gm_info>
+</event_message>

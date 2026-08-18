@@ -46,6 +46,9 @@ def test_scenario_template_uses_exact_portal_topic_and_keeps_connection_gated()-
 
 def test_service_units_are_hardened_and_separate()->None:
     root=Path(__file__).parents[2];scenario=(root/"services/shakealert-scenario-receiver.service").read_text();production=(root/"services/shakealert-production-receiver.service").read_text()
-    for text in (scenario,production):
-        assert "User=shakealert" in text and "NoNewPrivileges=true" in text and "ProtectSystem=strict" in text
+    assert "User=quakelogic" in scenario
+    assert "User=shakealert" in production
+    for text in (scenario, production):
+        assert "NoNewPrivileges=true" in text and "ProtectSystem=strict" in text
     assert "/scenario/" in scenario and "/production/" in production
+    assert "Restart=no" in scenario
