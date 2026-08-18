@@ -2,6 +2,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /** Immutable domain representation of one supported ShakeAlert Event update. */
 record ShakeAlertEventUpdate(
@@ -16,7 +17,8 @@ record ShakeAlertEventUpdate(
     Instant messageTimestamp,
     CoreInfo coreInfo,
     List<Contributor> contributors,
-    boolean groundMotionInfoPresent
+    boolean groundMotionInfoPresent,
+    Optional<FiniteFault> finiteFault
 ) {
     enum MessageType { NEW, UPDATE }
 
@@ -63,6 +65,7 @@ record ShakeAlertEventUpdate(
         Objects.requireNonNull(messageTimestamp, "messageTimestamp");
         Objects.requireNonNull(coreInfo, "coreInfo");
         contributors = List.copyOf(Objects.requireNonNull(contributors, "contributors"));
+        finiteFault = Objects.requireNonNull(finiteFault, "finiteFault");
     }
 
     String updateIdentity() {

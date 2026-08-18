@@ -28,3 +28,20 @@ Expected data failures preserve the capture and allow subsequent deliveries. Une
 ## Consequences
 
 Transport, subscription, acknowledgment, retry, publishing, and Production-isolation behavior is unchanged. XML parsing never receives the live JMS object. Service-manager deployment and externally published parser health remain future work.
+
+## Observed finite-fault profile
+
+Scenario Event updates 5 through 9 introduced one optional `fault_info` section. The
+supported profile is deliberately narrow: one `fault_info`, one `finite_fault`, one
+`segment`, one `vertices` container, and ordered `vertex` children containing exactly
+`lat`, `lon`, and `depth`. The only accepted finite-fault attributes are `atten_geom`,
+`segment_number`, and `segment_shape`; the observed values require attenuation geometry
+`true`, shape `line`, degree units for latitude/longitude, and kilometre units for depth.
+
+The fixed single-element cardinalities reflect the only observed contract and are not
+forward-compatibility guesses. Vertex cardinality is the evolving dimension: the largest
+observed update contained 12 vertices, while parsing is capped at 256 vertices per segment
+and 256 total. This is comfortably above the captured sequence but keeps work and domain
+allocation bounded below the existing global XML limits. Latitude is restricted to
+[-90, 90], longitude to [-180, 180], and depth to [-20, 1000] km. Unknown structure,
+attributes, namespaces, units, or finite-fault variants continue to fail closed.

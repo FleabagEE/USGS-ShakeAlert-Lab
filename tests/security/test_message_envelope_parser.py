@@ -39,6 +39,30 @@ def test_domain_model_is_typed_not_arbitrary_map() -> None:
     assert "Map<String, Object>" not in source
     assert "CoreInfo" in source
     assert "Contributor" in source
+    assert "Optional<FiniteFault>" in source
+    for name in ("FiniteFault.java", "FaultSegment.java", "FaultVertex.java"):
+        typed_source = (TOOLS / name).read_text(encoding="utf-8")
+        assert "record " in typed_source
+        assert "Map<String, Object>" not in typed_source
+
+
+def test_finite_fault_profile_is_explicitly_allowlisted_and_bounded() -> None:
+    source = (TOOLS / "ShakeAlertEventParser.java").read_text(encoding="utf-8")
+    for control in (
+        "FINITE_FAULT_ATTRIBUTES",
+        '"atten_geom"',
+        '"segment_number"',
+        '"segment_shape"',
+        'Set.of("lat", "lon", "depth")',
+        'MAXIMUM_FAULT_INFO = 1',
+        'MAXIMUM_FINITE_FAULTS = 1',
+        'MAXIMUM_SEGMENTS = 1',
+        'MAXIMUM_VERTICES_PER_SEGMENT = 256',
+        'MAXIMUM_TOTAL_VERTICES = 256',
+        '"line".equals(segmentShape)',
+        '"true".equals(requiredAttribute(finiteFault, "atten_geom"))',
+    ):
+        assert control in source
 
 
 def test_parser_has_no_jms_or_transport_native_dependency() -> None:

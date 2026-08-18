@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import javax.xml.XMLConstants;
@@ -49,6 +50,22 @@ final class ShakeAlertEventParser {
     private static final Set<String> ROOT_ATTRIBUTES = Set.of(
         "alg_vers", "category", "instance", "message_type", "orig_sys",
         "ref_id", "ref_src", "timestamp", "version");
+    private static final Set<String> FINITE_FAULT_ATTRIBUTES = Set.of(
+        "atten_geom", "segment_number", "segment_shape");
+    private static final Set<String> UNITS_ATTRIBUTE = Set.of("units");
+    private static final int MAXIMUM_FAULT_INFO = 1;
+    private static final int MAXIMUM_FINITE_FAULTS = 1;
+    private static final int MAXIMUM_SEGMENTS = 1;
+    // The observed sequence grows to 12 vertices. 256 leaves ample evolution room while bounded.
+    private static final int MAXIMUM_VERTICES_PER_SEGMENT = 256;
+    private static final int MAXIMUM_TOTAL_VERTICES = 256;
+    private static final BigDecimal MINIMUM_LATITUDE = new BigDecimal("-90");
+    private static final BigDecimal MAXIMUM_LATITUDE = new BigDecimal("90");
+    private static final BigDecimal MINIMUM_LONGITUDE = new BigDecimal("-180");
+    private static final BigDecimal MAXIMUM_LONGITUDE = new BigDecimal("180");
+    // Kilometres; allows shallow above-datum geometry and deep faults without unbounded values.
+    private static final BigDecimal MINIMUM_DEPTH_KM = new BigDecimal("-20");
+    private static final BigDecimal MAXIMUM_DEPTH_KM = new BigDecimal("1000");
     private final Limits limits;
 
     ShakeAlertEventParser(Limits limits) { this.limits = limits; }
@@ -72,7 +89,8 @@ final class ShakeAlertEventParser {
         }
         validateBounds(root, 1, new Counters());
         requireOnlyAttributes(root, ROOT_ATTRIBUTES);
-        requireOnlyTopLevelChildren(root, Set.of("core_info", "contributors", "gm_info"));
+        requireOnlyTopLevelChildren(root,
+            Set.of("core_info", "contributors", "gm_info", "fault_info"));
 
         String algorithmVersion = requiredAttribute(root, "alg_vers");
         if (!SUPPORTED_ALGORITHM_VERSION.equals(algorithmVersion)) {
@@ -89,6 +107,7 @@ final class ShakeAlertEventParser {
             Element core = requiredDirectChild(root, "core_info");
             Element contributorsElement = requiredDirectChild(root, "contributors");
             boolean gmInfo = optionalDirectChild(root, "gm_info") != null;
+            Optional<FiniteFault> finiteFault = finiteFault(root);
             String eventId = requiredAttribute(core, "id");
             ShakeAlertEventUpdate.CoreInfo coreInfo = new ShakeAlertEventUpdate.CoreInfo(
                 Instant.parse(requiredText(core, "orig_time")),
@@ -107,7 +126,7 @@ final class ShakeAlertEventParser {
                 requiredAttribute(root, "category"), requiredAttribute(root, "orig_sys"),
                 requiredAttribute(root, "instance"),
                 Instant.parse(requiredAttribute(root, "timestamp")), coreInfo,
-                contributors, gmInfo);
+                contributors, gmInfo, finiteFault);
         } catch (NumberFormatException | DateTimeParseException error) {
             throw new ExpectedFailure(FailureCategory.MALFORMED_PAYLOAD, error);
         }
@@ -227,6 +246,121 @@ final class ShakeAlertEventParser {
         return List.copyOf(result);
     }
 
+    private static Optional<FiniteFault> finiteFault(Element root) throws ExpectedFailure {
+        List<Element> faultInfos = namedDirectChildren(root, "fault_info");
+        if (faultInfos.size() > MAXIMUM_FAULT_INFO) throw malformed();
+        if (faultInfos.isEmpty()) return Optional.empty();
+
+        Element faultInfo = faultInfos.getFirst();
+        requireElementContract(faultInfo, "fault_info", Set.of());
+        List<Element> finiteFaults = namedDirectChildren(faultInfo, "finite_fault");
+        requireOnlyChildren(faultInfo, Set.of("finite_fault"));
+        if (finiteFaults.size() != 1 || finiteFaults.size() > MAXIMUM_FINITE_FAULTS) {
+            throw malformed();
+        }
+
+        Element finiteFault = finiteFaults.getFirst();
+        requireElementContract(finiteFault, "finite_fault", FINITE_FAULT_ATTRIBUTES);
+        if (!"true".equals(requiredAttribute(finiteFault, "atten_geom"))) {
+            throw new ExpectedFailure(FailureCategory.UNSUPPORTED_SCHEMA);
+        }
+        int segmentNumber = positiveInt(requiredAttribute(finiteFault, "segment_number"));
+        String segmentShape = requiredAttribute(finiteFault, "segment_shape");
+        if (!"line".equals(segmentShape)) {
+            throw new ExpectedFailure(FailureCategory.UNSUPPORTED_SCHEMA);
+        }
+
+        requireOnlyChildren(finiteFault, Set.of("segment"));
+        List<Element> segmentElements = namedDirectChildren(finiteFault, "segment");
+        if (segmentElements.isEmpty() || segmentElements.size() > MAXIMUM_SEGMENTS) throw malformed();
+        List<FaultSegment> segments = new ArrayList<>();
+        int totalVertices = 0;
+        for (Element segmentElement : segmentElements) {
+            requireElementContract(segmentElement, "segment", Set.of());
+            requireOnlyChildren(segmentElement, Set.of("vertices"));
+            Element verticesElement = requiredDirectChild(segmentElement, "vertices");
+            requireElementContract(verticesElement, "vertices", Set.of());
+            requireOnlyChildren(verticesElement, Set.of("vertex"));
+            List<Element> vertexElements = namedDirectChildren(verticesElement, "vertex");
+            if (vertexElements.isEmpty() || vertexElements.size() > MAXIMUM_VERTICES_PER_SEGMENT) {
+                throw malformed();
+            }
+            totalVertices += vertexElements.size();
+            if (totalVertices > MAXIMUM_TOTAL_VERTICES) throw malformed();
+            List<FaultVertex> vertices = new ArrayList<>();
+            for (Element vertexElement : vertexElements) vertices.add(faultVertex(vertexElement));
+            segments.add(new FaultSegment(vertices));
+        }
+        return Optional.of(new FiniteFault(true, segmentNumber, segmentShape, segments));
+    }
+
+    private static FaultVertex faultVertex(Element vertex) throws ExpectedFailure {
+        requireElementContract(vertex, "vertex", Set.of());
+        requireOnlyChildren(vertex, Set.of("lat", "lon", "depth"));
+        Element latitudeElement = requiredDirectChild(vertex, "lat");
+        Element longitudeElement = requiredDirectChild(vertex, "lon");
+        Element depthElement = requiredDirectChild(vertex, "depth");
+        requireCoordinateContract(latitudeElement, "lat", "deg");
+        requireCoordinateContract(longitudeElement, "lon", "deg");
+        requireCoordinateContract(depthElement, "depth", "km");
+        BigDecimal latitude = boundedDecimal(latitudeElement.getTextContent(),
+            MINIMUM_LATITUDE, MAXIMUM_LATITUDE);
+        BigDecimal longitude = boundedDecimal(longitudeElement.getTextContent(),
+            MINIMUM_LONGITUDE, MAXIMUM_LONGITUDE);
+        BigDecimal depth = boundedDecimal(depthElement.getTextContent(),
+            MINIMUM_DEPTH_KM, MAXIMUM_DEPTH_KM);
+        return new FaultVertex(latitude, longitude, depth);
+    }
+
+    private static void requireCoordinateContract(Element element, String name, String units)
+            throws ExpectedFailure {
+        requireElementContract(element, name, UNITS_ATTRIBUTE);
+        requireNoElementChildren(element);
+        if (!units.equals(requiredAttribute(element, "units"))) {
+            throw new ExpectedFailure(FailureCategory.UNSUPPORTED_SCHEMA);
+        }
+    }
+
+    private static void requireElementContract(Element element, String name, Set<String> attributes)
+            throws ExpectedFailure {
+        if (!name.equals(element.getTagName())
+                || (element.getNamespaceURI() != null && !element.getNamespaceURI().isEmpty())) {
+            throw new ExpectedFailure(FailureCategory.UNSUPPORTED_SCHEMA);
+        }
+        requireOnlyAttributes(element, attributes);
+    }
+
+    private static void requireOnlyChildren(Element element, Set<String> names)
+            throws ExpectedFailure {
+        NodeList children = element.getChildNodes();
+        for (int index = 0; index < children.getLength(); index++) {
+            Node child = children.item(index);
+            if (child instanceof Element nested) {
+                if (!names.contains(nested.getTagName())
+                        || (nested.getNamespaceURI() != null
+                            && !nested.getNamespaceURI().isEmpty())) {
+                    throw new ExpectedFailure(FailureCategory.UNSUPPORTED_SCHEMA);
+                }
+            } else if ((child.getNodeType() == Node.TEXT_NODE
+                    || child.getNodeType() == Node.CDATA_SECTION_NODE)
+                    && !child.getNodeValue().isBlank()) {
+                throw new ExpectedFailure(FailureCategory.UNSUPPORTED_SCHEMA);
+            }
+        }
+    }
+
+    private static void requireNoElementChildren(Element element) throws ExpectedFailure {
+        for (Element ignored : directChildren(element)) {
+            throw new ExpectedFailure(FailureCategory.UNSUPPORTED_SCHEMA);
+        }
+    }
+
+    private static List<Element> namedDirectChildren(Element parent, String name) {
+        List<Element> result = new ArrayList<>();
+        for (Element child : directChildren(parent)) if (name.equals(child.getTagName())) result.add(child);
+        return result;
+    }
+
     private static Element requiredDirectChild(Element parent, String name) throws ExpectedFailure {
         Element result = optionalDirectChild(parent, name);
         if (result == null) throw malformed();
@@ -283,6 +417,18 @@ final class ShakeAlertEventParser {
     }
 
     private static BigDecimal decimal(String value) { return new BigDecimal(value); }
+    private static BigDecimal boundedDecimal(String value, BigDecimal minimum, BigDecimal maximum)
+            throws ExpectedFailure {
+        if (value == null || value.isBlank()) throw malformed();
+        BigDecimal result = decimal(value.strip());
+        if (result.compareTo(minimum) < 0 || result.compareTo(maximum) > 0) throw malformed();
+        return result;
+    }
+    private static int positiveInt(String value) throws ExpectedFailure {
+        int result = Integer.parseInt(value);
+        if (result <= 0) throw malformed();
+        return result;
+    }
     private static int nonnegativeInt(String value) throws ExpectedFailure {
         int result = Integer.parseInt(value);
         if (result < 0) throw malformed();

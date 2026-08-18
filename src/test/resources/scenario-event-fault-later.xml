@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<event_message message_type="update" version="9" category="test"
+    alg_vers="2.3.23 2020-04-01" orig_sys="EEWScenario"
+    ref_id="synthetic" ref_src="" instance="fixture-instance"
+    timestamp="2026-08-18T15:42:33.000Z">
+  <core_info id="synthetic-fault-event">
+    <mag units="Mw">4.6</mag><lat units="deg">34.10</lat>
+    <lon units="deg">-117.20</lon><depth units="km">7.0</depth>
+    <orig_time units="UTC">2026-08-18T15:42:24.000Z</orig_time>
+    <likelihood>0.97</likelihood><num_stations>12</num_stations>
+  </core_info>
+  <contributors>
+    <contributor alg_name="synthetic-algorithm" alg_version="1"
+        alg_instance="fixture-instance" category="test"
+        event_id="synthetic-fault-event" version="9"/>
+  </contributors>
+  <fault_info>
+    <finite_fault atten_geom="true" segment_number="1" segment_shape="line">
+      <segment><vertices>
+        <vertex><lat units="deg">34.00</lat><lon units="deg">-117.24</lon><depth units="km">0.0</depth></vertex>
+        <vertex><lat units="deg">34.02</lat><lon units="deg">-117.21</lon><depth units="km">1.0</depth></vertex>
+        <vertex><lat units="deg">34.04</lat><lon units="deg">-117.18</lon><depth units="km">2.0</depth></vertex>
+        <vertex><lat units="deg">34.06</lat><lon units="deg">-117.15</lon><depth units="km">3.0</depth></vertex>
+      </vertices></segment>
+    </finite_fault>
+  </fault_info>
+  <gm_info><gmpoint_obs><pga_obs number="0"/></gmpoint_obs></gm_info>
+</event_message>

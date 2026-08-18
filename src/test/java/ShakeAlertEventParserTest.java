@@ -122,6 +122,121 @@ final class ShakeAlertEventParserTest {
         assertEquals(ShakeAlertEventUpdate.MessageType.UPDATE, update.messageType());
         assertEquals(7, update.updateVersion());
         assertTrue(update.groundMotionInfoPresent());
+        assertTrue(update.finiteFault().isEmpty());
+    }
+
+    @Test void observedUpdateFiveFiniteFaultParsesIntoImmutableTypedModel() throws Exception {
+        ShakeAlertEventUpdate update = LIMITS.parse(
+            envelope(faultMinimal(), "ID:fault-5", false, Map.of()));
+        assertEquals(5, update.updateVersion());
+        assertFalse(update.groundMotionInfoPresent());
+        FiniteFault fault = update.finiteFault().orElseThrow();
+        assertTrue(fault.attenuationGeometry());
+        assertEquals(1, fault.segmentNumber());
+        assertEquals("line", fault.segmentShape());
+        assertEquals(1, fault.segments().size());
+        assertEquals(2, fault.segments().getFirst().vertices().size());
+        assertEquals("34.01", fault.segments().getFirst().vertices().getFirst()
+            .latitude().toPlainString());
+        assertThrows(UnsupportedOperationException.class,
+            () -> fault.segments().add(new FaultSegment(java.util.List.of(
+                new FaultVertex(java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO,
+                    java.math.BigDecimal.ZERO)))));
+        assertThrows(UnsupportedOperationException.class,
+            () -> fault.segments().getFirst().vertices().clear());
+    }
+
+    @Test void laterFiniteFaultPreservesVertexOrderAndCoexistsWithGmInfo() throws Exception {
+        ShakeAlertEventUpdate update = LIMITS.parse(
+            envelope(faultLater(), "ID:fault-9", false, Map.of()));
+        assertEquals(9, update.updateVersion());
+        assertTrue(update.groundMotionInfoPresent());
+        var vertices = update.finiteFault().orElseThrow().segments().getFirst().vertices();
+        assertEquals(4, vertices.size());
+        assertEquals("34.00", vertices.get(0).latitude().toPlainString());
+        assertEquals("34.06", vertices.get(3).latitude().toPlainString());
+    }
+
+    @Test void unknownFaultChildAttributeAndNamespaceAreRejected() {
+        String xml = text(faultMinimal());
+        assertCategory(xml.replace("<finite_fault", "<unexpected/><finite_fault")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.UNSUPPORTED_SCHEMA);
+        assertCategory(xml.replace("segment_shape=\"line\"",
+            "segment_shape=\"line\" extra=\"no\"").getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.UNSUPPORTED_SCHEMA);
+        assertCategory(xml.replace("<fault_info>", "<fault_info extra=\"no\">")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.UNSUPPORTED_SCHEMA);
+        assertCategory(xml.replace("<fault_info>", "<fault_info xmlns=\"urn:unsupported\">")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.UNSUPPORTED_SCHEMA);
+    }
+
+    @Test void missingMalformedAndNonFiniteCoordinatesAreRejected() {
+        String xml = text(faultMinimal());
+        for (String coordinate : java.util.List.of(
+                "<lat units=\"deg\">34.01</lat>",
+                "<lon units=\"deg\">-117.21</lon>",
+                "<depth units=\"km\">0.0</depth>")) {
+            assertCategory(xml.replace(coordinate, "").getBytes(StandardCharsets.UTF_8),
+                ShakeAlertEventParser.FailureCategory.MALFORMED_PAYLOAD);
+        }
+        assertCategory(xml.replace(">34.01</lat>", ">not-a-number</lat>")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.MALFORMED_PAYLOAD);
+        assertCategory(xml.replace(">34.01</lat>", ">NaN</lat>")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.MALFORMED_PAYLOAD);
+        assertCategory(xml.replace(">34.01</lat>", ">Infinity</lat>")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.MALFORMED_PAYLOAD);
+    }
+
+    @Test void coordinateBoundsAndUnitsFailClosed() {
+        String xml = text(faultMinimal());
+        assertCategory(xml.replace(">34.01</lat>", ">91</lat>")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.MALFORMED_PAYLOAD);
+        assertCategory(xml.replace("<lat units=\"deg\">34.01</lat>",
+            "<lat units=\"radian\">34.01</lat>").getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.UNSUPPORTED_SCHEMA);
+    }
+
+    @Test void finiteFaultCardinalityAndNestingAreBounded() {
+        String xml = text(faultMinimal());
+        String fault = between(xml, "  <fault_info>", "  </fault_info>");
+        assertCategory(xml.replace("</event_message>", fault + "</event_message>")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.MALFORMED_PAYLOAD);
+        String segment = "<segment><vertices>"
+            + "<vertex><lat units=\"deg\">34</lat><lon units=\"deg\">-117</lon>"
+            + "<depth units=\"km\">0</depth></vertex></vertices></segment>";
+        assertCategory(xml.replace("    </finite_fault>", segment + "    </finite_fault>")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.MALFORMED_PAYLOAD);
+        assertCategory(xml.replace("<segment><vertices>", "<vertices><segment>")
+            .replace("</vertices></segment>", "</segment></vertices>")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.UNSUPPORTED_SCHEMA);
+        assertCategory(xml.replace("<fault_info>", "<fault_info>unexpected-text")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.UNSUPPORTED_SCHEMA);
+        assertCategory(xml.replace(">34.01</lat>", "><unexpected/>34.01</lat>")
+            .getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.UNSUPPORTED_SCHEMA);
+    }
+
+    @Test void finiteFaultVertexLimitIsEnforcedIndependentlyOfGlobalXmlLimits() {
+        String xml = text(faultMinimal());
+        String vertex = "<vertex><lat units=\"deg\">34</lat>"
+            + "<lon units=\"deg\">-117</lon><depth units=\"km\">0</depth></vertex>";
+        String many = vertex.repeat(257);
+        String oversizedFault = xml.replaceFirst("(?s)<vertex>.*?</vertex>\\s*<vertex>.*?</vertex>",
+            java.util.regex.Matcher.quoteReplacement(many));
+        assertCategoryWith(new ShakeAlertEventParser.Limits(262144, 5000, 32, 5000, 262144),
+            oversizedFault.getBytes(StandardCharsets.UTF_8),
+            ShakeAlertEventParser.FailureCategory.MALFORMED_PAYLOAD);
     }
 
     @Test void exactIdentityAndCoreFieldsAreExtracted() throws Exception {
@@ -216,6 +331,14 @@ final class ShakeAlertEventParserTest {
 
     private static byte[] early() { return resource("/westmoreland-event-early.xml"); }
     private static byte[] later() { return resource("/westmoreland-event-later.xml"); }
+    private static byte[] faultMinimal() { return resource("/scenario-event-fault-minimal.xml"); }
+    private static byte[] faultLater() { return resource("/scenario-event-fault-later.xml"); }
+    private static String between(String text, String start, String end) {
+        int first = text.indexOf(start);
+        int last = text.indexOf(end, first);
+        if (first < 0 || last < 0) throw new AssertionError("fixture markers missing");
+        return text.substring(first, last + end.length()) + "\n";
+    }
     private static byte[] resource(String name) {
         try (var input = ShakeAlertEventParserTest.class.getResourceAsStream(name)) {
             if (input == null) throw new AssertionError("missing fixture " + name);
