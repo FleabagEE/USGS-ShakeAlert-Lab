@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+repository="$repo_root/.mvn/repository"
+manifest="$repo_root/build-support/maven-artifacts.sha256"
+
+[[ -d "$repository" ]] || { printf '%s\n' 'isolated Maven repository is absent' >&2; exit 66; }
+cd -- "$repo_root"
+mapfile -d '' artifacts < <(
+  find .mvn/repository -type f \( -name '*.jar' -o -name '*.pom' \) -print0 | sort -z
+)
+[[ ${#artifacts[@]} -gt 0 ]] || { printf '%s\n' 'no Maven JAR/POM artifacts found' >&2; exit 66; }
+
+temporary=$(mktemp "$repo_root/build-support/.maven-artifacts.sha256.XXXXXX")
+trap 'rm -f -- "$temporary"' EXIT
+sha256sum -- "${artifacts[@]}" > "$temporary"
+chmod 0644 "$temporary"
+mv -- "$temporary" "$manifest"
+trap - EXIT
+printf 'CHECKSUM_MANIFEST=%s\n' "$manifest"

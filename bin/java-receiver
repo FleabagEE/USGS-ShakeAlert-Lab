@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+action=${1:-}
+
+fail() { printf 'java-receiver: %s\n' "$1" >&2; exit 64; }
+
+verify_java() {
+  local java_version
+  java_version=$(java -version 2>&1 | head -n 1)
+  [[ "$java_version" == *'"21.'* ]] || fail 'Java 21 is required'
+}
+
+verify_runtime() {
+  local classes="$repo_root/target/classes"
+  local manifest="$repo_root/target/runtime-classpath.txt"
+  local classpath real name listing
+  local client_count=0 activemq_implementation_count=0 jms_api_count=0
+  local log4j_api_count=0 log4j_core_count=0
+  declare -A versions=()
+  declare -A seen=()
+
+  verify_java
+  [[ -f "$classes/ScenarioOpenWireReceiver.class" ]] || fail 'compiled receiver class is absent'
+  [[ -f "$manifest" ]] || fail 'runtime classpath manifest is absent'
+  classpath=$(<"$manifest")
+  [[ -n "$classpath" ]] || fail 'runtime classpath manifest is empty'
+  IFS=: read -r -a entries <<< "$classpath"
+
+  for entry in "${entries[@]}"; do
+    real=$(realpath -e -- "$entry") || fail 'classpath entry does not exist'
+    [[ -f "$real" && "$real" == *.jar ]] || fail "classpath entry is not a JAR: $real"
+    case "$real" in
+      /tmp|/tmp/*|*/backups*/*|*/backup*/*|*/Downloads/*|*/downloads/*)
+        fail "forbidden classpath entry: $real"
+        ;;
+    esac
+    [[ "$real" == "$repo_root/.mvn/repository/"* ]] ||
+      fail "classpath entry is outside the isolated repository: $real"
+    [[ -z "${seen[$real]+present}" ]] || fail "duplicate classpath entry: $real"
+    seen["$real"]=1
+    name=${real##*/}
+
+    [[ "$name" != activemq-all-*.jar ]] || fail 'the ActiveMQ all-in-one bundle is forbidden'
+    if [[ "$name" =~ ^activemq-.*-([0-9]+\.[0-9]+\.[0-9]+)\.jar$ ]]; then
+      versions["${BASH_REMATCH[1]}"]=1
+      [[ "${BASH_REMATCH[1]}" == 5.19.10 ]] ||
+        fail "unapproved ActiveMQ version: ${BASH_REMATCH[1]}"
+    fi
+    [[ "$name" =~ ^activemq-client-5\.19\.10\.jar$ ]] && ((client_count+=1))
+
+    if [[ "$name" =~ ^log4j-.*-([0-9]+\.[0-9]+\.[0-9]+)\.jar$ ]]; then
+      [[ "${BASH_REMATCH[1]}" == 2.26.1 ]] ||
+        fail "unapproved Log4j version: ${BASH_REMATCH[1]}"
+    fi
+    [[ "$name" == log4j-api-2.26.1.jar ]] && ((log4j_api_count+=1))
+    [[ "$name" == log4j-core-2.26.1.jar ]] && ((log4j_core_count+=1))
+
+    listing=$(jar tf "$real")
+    if grep -qx 'org/apache/activemq/ActiveMQConnectionFactory.class' <<< "$listing"; then
+      ((activemq_implementation_count+=1))
+    fi
+    if grep -qx 'javax/jms/Connection.class' <<< "$listing"; then
+      ((jms_api_count+=1))
+    fi
+  done
+
+  [[ ${#versions[@]} -eq 1 && $client_count -eq 1 ]] ||
+    fail 'missing, duplicate, or mixed ActiveMQ client versions'
+  [[ $activemq_implementation_count -eq 1 ]] ||
+    fail 'duplicate or missing ActiveMQ connection-factory implementation'
+  [[ $jms_api_count -eq 1 ]] || fail 'duplicate or missing JMS API implementation'
+  [[ $log4j_api_count -eq 1 && $log4j_core_count -eq 1 ]] ||
+    fail 'required Log4j 2.26.1 API/Core pair is missing or duplicated'
+  printf '%s\n' 'RUNTIME_VERIFICATION=success'
+}
+
+[[ "$repo_root" != /tmp && "$repo_root" != /tmp/* ]] || fail 'repository may not be under /tmp'
+cd -- "$repo_root"
+
+case "$action" in
+  build)
+    shift
+    command -v mvn >/dev/null 2>&1 || fail 'Maven is not installed; refusing to download it'
+    verify_java
+    mvn -o -f "$repo_root/pom.xml" clean package -DskipTests "$@"
+    ;;
+  test)
+    shift
+    command -v mvn >/dev/null 2>&1 || fail 'Maven is not installed; refusing to download it'
+    verify_java
+    mvn -o -f "$repo_root/pom.xml" clean test "$@"
+    ;;
+  verify-runtime)
+    [[ $# -eq 1 ]] || fail 'verify-runtime accepts no arguments'
+    verify_runtime
+    ;;
+  run)
+    shift
+    verify_runtime
+    classpath=$(<"$repo_root/target/runtime-classpath.txt")
+    exec java -cp "$repo_root/target/classes:$classpath" ScenarioOpenWireReceiver "$@"
+    ;;
+  *) fail 'usage: bin/java-receiver build|test|verify-runtime|run [arguments]' ;;
+esac

@@ -24,7 +24,42 @@ def envelope(payload:bytes=b"native",**changes:object)->MessageEnvelope:
     values.update(changes);return MessageEnvelope(**values) # type: ignore[arg-type]
 def config_text(**changes:str)->str:
     values={"host":"verified.example","protocol":"verified","version":"1","destination":"assigned"};values.update(changes)
-    return f'''[endpoint]\nname="scenario"\nenvironment="scenario"\nhost="{values['host']}"\nport=1234\nprotocol="{values['protocol']}"\nprotocol_version="{values['version']}"\ndestination="{values['destination']}"\ntls_required=true\nmaximum_payload_bytes=4096\nconnect_authorized=false\n[credentials]\n[storage]\nnative_directory="native"\nnormalized_directory="normalized"\nrejected_directory="rejected"\nlog_directory="logs"\n[runtime]\nqueue_capacity=8\nshutdown_timeout_seconds=2\n'''
+    return f'''[endpoint]\nname="generic"\nenvironment="production"\nhost="{values['host']}"\nport=1234\nprotocol="{values['protocol']}"\nprotocol_version="{values['version']}"\ndestination="{values['destination']}"\ntls_required=true\nmaximum_payload_bytes=4096\nconnect_authorized=false\n[credentials]\n[storage]\nnative_directory="native"\nnormalized_directory="normalized"\nrejected_directory="rejected"\nlog_directory="logs"\n[runtime]\nqueue_capacity=8\nshutdown_timeout_seconds=2\n'''
+def scenario_config_text(**changes: object) -> str:
+    values = {
+        "host": "scenario.eew.shakealert.org",
+        "port": 61612,
+        "protocol": "openwire",
+        "version": "12",
+        "destination": "eew.test_portal.dm.data",
+        "tls": "true",
+        "account": "QuakeLogic-SA1",
+    }
+    values.update(changes)
+    return f"""[endpoint]
+name="usgs-scenario-openwire"
+environment="scenario"
+host="{values['host']}"
+port={values['port']}
+protocol="{values['protocol']}"
+protocol_version="{values['version']}"
+destination="{values['destination']}"
+tls_required={values['tls']}
+maximum_payload_bytes=16777216
+connect_authorized=false
+[credentials]
+username_file="credentials/scenario/{values['account']}/username"
+password_file="credentials/scenario/{values['account']}/password"
+[storage]
+native_directory="native"
+normalized_directory="normalized"
+rejected_directory="rejected"
+log_directory="logs"
+[runtime]
+queue_capacity=1024
+shutdown_timeout_seconds=30
+"""
+
 def test_config_is_protocol_neutral_and_separates_paths(tmp_path:Path)->None:
     path=tmp_path/"lab.toml";path.write_text(config_text());config=load_config(path)
     assert config.endpoint.protocol=="verified" and not config.endpoint.connect_authorized
@@ -33,6 +68,24 @@ def test_config_is_protocol_neutral_and_separates_paths(tmp_path:Path)->None:
 def test_config_rejects_unknown_empty_required_values(tmp_path:Path,field:str)->None:
     path=tmp_path/"bad.toml";path.write_text(config_text(**{field:""}))
     with pytest.raises(ConfigurationError):load_config(path)
+def test_authoritative_scenario_endpoint_is_explicit_and_validated(tmp_path:Path)->None:
+    path=tmp_path/"scenario.toml";path.write_text(scenario_config_text());config=load_config(path)
+    assert config.endpoint.host=="scenario.eew.shakealert.org" and config.endpoint.port==61612
+    assert config.endpoint.destination=="eew.test_portal.dm.data" and not config.endpoint.connect_authorized
+
+@pytest.mark.parametrize("change",[
+    {"port":61617},
+    {"host":"production.eew.shakealert.org"},
+    {"protocol":"mqtt"},
+    {"tls":"false"},
+    {"destination":"eew.test_*.dm.data"},
+    {"destination":"eew.test_QuakeLogic-SA1.dm.data.extra"},
+    {"account":"QuakeLogic-SA2"},
+])
+def test_scenario_endpoint_and_subscription_inputs_fail_closed(tmp_path:Path,change:dict[str,object])->None:
+    path=tmp_path/"bad-scenario.toml";path.write_text(scenario_config_text(**change))
+    with pytest.raises(ConfigurationError):load_config(path)
+
 def test_safety_interlock_is_exact()->None:
     enforce_safety_interlock({"ALLOW_OPERATIONAL_OUTPUTS":"false"})
     with pytest.raises(SafetyInterlockError):enforce_safety_interlock({})

@@ -1,19 +1,25 @@
 # Open Questions
 
-Scenario DNS, TCP, public TLS validation, hostname validation, and ActiveMQ
-OpenWire negotiation are verified. The assigned exact Event topic is known, but
-no subscription has succeeded.
+Scenario DNS, TCP, public TLS, hostname verification, ActiveMQ OpenWire,
+`QuakeLogic-SA1` authentication, exact Topic subscription, Event delivery, and
+bounded native capture are verified. The M4.6 Westmoreland Scenario delivered
+eight updates and all eight capture integrity checks passed.
 
-The immediate blocker is authoritative confirmation from USGS of:
+## Repository verification status
 
-- the correct ActiveMQ broker credentials for QuakeLogic-SA1;
-- whether the Scenario account is enabled and authorized for the assigned topic;
-- whether web-portal and broker credentials are identical for this account.
+Maven `3.8.7`, Java 21, and the POM-pinned dependencies/plugins were verified
+using the isolated `.mvn/repository`. All ten JUnit tests, checksum validation,
+dependency convergence, upper-bound and duplicate-class checks, packaging,
+runtime guards, and two-build reproducibility passed.
 
-Still open are mTLS requirements, client ID policy, acknowledgment and durable
-behavior, heartbeat, keepalive, reconnect, missed messages, environment
-markers, encoding, schema, cancellation, sequence, sizes, rates, allow-list,
-VPN/proxy requirements, credential expiration, and support escalation. All
-Production endpoint facts and authorization remain open. Operational questions
-include evidence retention, named approvals, log retention, certificate
-renewal, scenario scheduling, and later acceptance gates.
+## Remaining interface questions
+
+Still open are mTLS policy, acknowledgment/redelivery semantics, heartbeat and
+long-duration keepalive behavior, missed-message behavior for nondurable
+consumers, authoritative schema and sequence meanings, cancellation behavior,
+expected sizes/rates, allow-list/VPN/proxy requirements, credential expiration,
+support escalation, and evidence/log retention policy.
+
+All Production endpoint facts, credentials, destinations, protocol decisions,
+and authorization remain open. No Production inference may be made from the
+successful Scenario proof-of-concept.

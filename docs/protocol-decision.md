@@ -1,18 +1,25 @@
 # Protocol Decision
 
-Decision: **SCENARIO TRANSPORT VERIFIED; LIVE INTEGRATION BLOCKED AT
-AUTHENTICATION**.
+Decision: **SCENARIO OPENWIRE/TLS END-TO-END PROOF-OF-CONCEPT VERIFIED**.
 
-Authorized evidence confirms ActiveMQ OpenWire over verified TLS for the
-Scenario endpoint at `scenario.eew.shakealert.org:61617`; broker wire-format
-version 12 was observed. The passive Java receiver is restricted to the exact
-Event topic `eew.test_QuakeLogic-SA1.dm.data`, uses a non-durable consumer,
-and has no publishing path.
+The authoritative Scenario transport is ActiveMQ OpenWire over
+hostname-verified TLS at `scenario.eew.shakealert.org:61612`. Broker
+wire-format version 12 was observed. The explicit account is
+`QuakeLogic-SA1`; real authentication is accepted only after JMS session
+creation succeeds.
 
-Broker authentication is reached but rejected with a sanitized invalid
-username-or-password reason. Subscription behavior, acknowledgments, message
-schema, lifecycle, cancellation, sequencing, health monitoring, and
-missed-message behavior remain unverified because no subscription or live
-capture has succeeded. Production protocol and any equality with Scenario
-remain **UNKNOWN**. The offline MQTT adapter is not evidence of USGS
-compatibility.
+The verified destination is the exact non-durable Topic
+`eew.test_QuakeLogic-SA1.dm.data`, with no selector, `noLocal=false`, and no
+client ID. The receiver rejects wildcard and non-Event destinations, derives
+credentials only from the selected account directory, and contains no Queue,
+publishing, retry, fallback, or Production pathway.
+
+During the authorized M4.6 Westmoreland Event-only Scenario, the active
+consumer received eight updates and committed eight bounded native captures.
+All captured payload sizes and SHA-256 values verified. No JMS, transport,
+capture, publishing, fallback, or Production error occurred during that test.
+
+This decision applies only to Scenario reception. The repository-defined Java
+21/Maven build, JUnit suite, dependency controls, runtime guards, checksum
+manifest, and reproducible packaging are verified. Production protocol and any
+equality with Scenario remain **UNKNOWN**.

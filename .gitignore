@@ -29,6 +29,8 @@ messages/replay/*
 .venv/
 __pycache__/
 .pytest_cache/
+.mvn/repository/
+target/
 *.py[cod]
 *.swp
 .DS_Store

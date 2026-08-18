@@ -1,18 +1,21 @@
-# TEMPLATE ONLY. Replace REQUIRED_FROM_USGS values using verified materials.
+# The endpoint, QuakeLogic-SA1 identity, and exact Event topic below are
+# authoritative supplied values. The topic remains independent of the account
+# identity. Leave connect_authorized=false until passive subscription is
+# explicitly authorized.
 [endpoint]
-name="usgs-scenario"
+name="usgs-scenario-openwire"
 environment="scenario"
-host="REQUIRED_FROM_USGS"
-port=1
-protocol="REQUIRED_FROM_USGS"
-protocol_version="REQUIRED_FROM_USGS"
-destination="REQUIRED_FROM_USGS"
+host="scenario.eew.shakealert.org"
+port=61612
+protocol="openwire"
+protocol_version="12"
+destination="eew.test_QuakeLogic-SA1.dm.data"
 tls_required=true
-maximum_payload_bytes=1
+maximum_payload_bytes=16777216
 connect_authorized=false
 [credentials]
-username_file="/opt/quakelogic/shakealert-lab/credentials/scenario.username"
-password_file="/opt/quakelogic/shakealert-lab/credentials/scenario.password"
+username_file="/opt/quakelogic/shakealert-lab/credentials/scenario/QuakeLogic-SA1/username"
+password_file="/opt/quakelogic/shakealert-lab/credentials/scenario/QuakeLogic-SA1/password"
 [storage]
 native_directory="/opt/quakelogic/shakealert-lab/messages/native/scenario"
 normalized_directory="/opt/quakelogic/shakealert-lab/messages/normalized/scenario"

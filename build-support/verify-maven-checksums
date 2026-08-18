@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+manifest="$repo_root/build-support/maven-artifacts.sha256"
+
+[[ -f "$manifest" ]] || { printf '%s\n' 'Maven checksum manifest is absent' >&2; exit 66; }
+cd -- "$repo_root"
+current=$(mktemp "$repo_root/build-support/.maven-current.XXXXXX")
+locked=$(mktemp "$repo_root/build-support/.maven-locked.XXXXXX")
+trap 'rm -f -- "$current" "$locked"' EXIT
+find .mvn/repository -type f \( -name '*.jar' -o -name '*.pom' \) -print | sort > "$current"
+cut -d ' ' -f3- "$manifest" | sort > "$locked"
+cmp --silent "$locked" "$current" || { printf '%s\n' 'Maven repository contains missing or unlisted artifacts' >&2; exit 65; }
+sha256sum --check --strict "$manifest"

@@ -5,9 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import tomllib
+import re
 from typing import Any, Mapping
 
 from shakealert_lab.messaging.inbound import Environment
+
+
+SCENARIO_OPENWIRE_HOST = "scenario.eew.shakealert.org"
+SCENARIO_OPENWIRE_PORT = 61612
+SCENARIO_OPENWIRE_TOPIC = re.compile(r"eew\.test_[A-Za-z0-9][A-Za-z0-9-]{0,63}\.dm\.data")
+SCENARIO_ACCOUNT = "QuakeLogic-SA1"
 
 
 class ConfigurationError(ValueError):
@@ -69,6 +76,25 @@ class LabConfig:
     log_directory: Path
     queue_capacity: int
     shutdown_timeout_seconds: float
+
+
+def _validate_scenario_endpoint(endpoint: EndpointConfig) -> None:
+    """Require the independently configured authoritative passive Scenario boundary."""
+    if endpoint.host != SCENARIO_OPENWIRE_HOST or endpoint.port != SCENARIO_OPENWIRE_PORT:
+        raise ConfigurationError(
+            f"scenario endpoint must be {SCENARIO_OPENWIRE_HOST}:{SCENARIO_OPENWIRE_PORT}"
+        )
+    if endpoint.protocol != "openwire" or endpoint.protocol_version != "12":
+        raise ConfigurationError("scenario protocol must be OpenWire version 12")
+    if not endpoint.tls_required:
+        raise ConfigurationError("scenario endpoint requires TLS")
+    if endpoint.maximum_payload_bytes > 16777216:
+        raise ConfigurationError("scenario maximum_payload_bytes exceeds the capture bound")
+    if SCENARIO_OPENWIRE_TOPIC.fullmatch(endpoint.destination) is None:
+        raise ConfigurationError("scenario destination must be one exact non-wildcard Event topic")
+    for name, path in (("username", endpoint.credentials.username), ("password", endpoint.credentials.password)):
+        if path is None or path.name != name or path.parent.name != SCENARIO_ACCOUNT:
+            raise ConfigurationError(f"scenario {name} credential must be scoped to {SCENARIO_ACCOUNT}")
 
 
 def _path(base: Path, data: Mapping[str, Any], name: str) -> Path | None:
@@ -137,8 +163,7 @@ def load_config(path: Path) -> LabConfig:
             raise ConfigurationError(f"{name} is required")
         required_paths[name] = value
 
-    return LabConfig(
-        endpoint=EndpointConfig(
+    endpoint_config = EndpointConfig(
             name=_required_string(endpoint, "name"),
             environment=environment,
             host=_required_string(endpoint, "host"),
@@ -150,7 +175,12 @@ def load_config(path: Path) -> LabConfig:
             credentials=credential_paths,
             maximum_payload_bytes=maximum,
             connect_authorized=authorized,
-        ),
+        )
+    if endpoint_config.environment is Environment.SCENARIO:
+        _validate_scenario_endpoint(endpoint_config)
+
+    return LabConfig(
+        endpoint=endpoint_config,
         native_directory=required_paths["native_directory"],
         normalized_directory=required_paths["normalized_directory"],
         rejected_directory=required_paths["rejected_directory"],

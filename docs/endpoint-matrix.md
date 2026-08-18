@@ -1,20 +1,20 @@
 # Endpoint Matrix
 
 Only the Scenario facts explicitly marked verified below are confirmed.
-Remaining cells require authoritative USGS clarification or later authorized
-evidence.
+Production remains untested and unauthorized.
 
 | Attribute | Production | Scenario |
 |---|---|---|
-| Logical name/environment | production (configured identity only) | scenario (configured identity only) |
-| Host/IP/port | REQUIRED FROM USGS | `scenario.eew.shakealert.org:61617` — DNS and TCP verified 2026-08-06 |
-| Protocol/version | REQUIRED FROM USGS | ActiveMQ OpenWire, broker wire-format version 12 observed |
-| TLS/CA/mTLS/SNI | REQUIRED FROM USGS | Public CA chain and hostname verified; TLS 1.3 observed; mTLS requirement not established |
-| Authentication/client ID | REQUIRED FROM USGS | Authentication reached; rejected with sanitized invalid username-or-password reason; broker credentials/account authorization require USGS confirmation |
-| Destination/topic/queue/vhost | REQUIRED FROM USGS | Exact Event topic assigned as `eew.test_QuakeLogic-SA1.dm.data`; subscription not yet established |
-| Durable subscription/ack/QoS | REQUIRED FROM USGS | Non-durable JMS consumer and client acknowledgment selected locally; broker behavior not yet verified |
-| Heartbeat/keepalive/reconnect | REQUIRED FROM USGS | REQUIRED FROM USGS |
-| Environment marker | REQUIRED FROM USGS | REQUIRED FROM USGS |
-| Encoding/content type/max size | REQUIRED FROM USGS | REQUIRED FROM USGS |
-| Rate/allow-list/VPN/proxy | REQUIRED FROM USGS | REQUIRED FROM USGS |
-| Expiration/support contact | REQUIRED FROM USGS | REQUIRED FROM USGS |
+| Logical environment | Configured identity only; untested | Scenario |
+| Host/port | REQUIRED FROM USGS | `scenario.eew.shakealert.org:61612`, verified |
+| Protocol/version | REQUIRED FROM USGS | ActiveMQ OpenWire over TLS; broker wire-format version 12 observed |
+| TLS/hostname | REQUIRED FROM USGS | Public CA chain and hostname verification succeeded; TLS 1.3 observed |
+| Authentication | REQUIRED FROM USGS | `QuakeLogic-SA1`; real authentication succeeded through JMS session creation |
+| Destination type/name | REQUIRED FROM USGS | Non-durable Topic `eew.test_QuakeLogic-SA1.dm.data`; exact name verified; no selector; `noLocal=false` |
+| Delivery evidence | None | M4.6 Westmoreland Event-only Scenario delivered 8 Event updates on 2026-08-18 |
+| Capture evidence | None | 8 completed, 0 temporary, 0 failures; payload sizes and SHA-256 values verified |
+| Publishing/fallback | None authorized | No publishing, wildcard, retry, or fallback path used |
+| Acknowledgment | REQUIRED FROM USGS | `CLIENT_ACKNOWLEDGE` session; captures intentionally remained unacknowledged pending broker-semantics review |
+| Reconnect/keepalive | REQUIRED FROM USGS | Automatic retry/fallback disabled; one earlier listener later reported an inactivity exception and was replaced under authorization |
+| mTLS/client ID | REQUIRED FROM USGS | No client ID; mTLS requirement not established |
+| Encoding/schema/rate | REQUIRED FROM USGS | Eight native examples preserved locally; detailed schema/rate characterization remains future work |
