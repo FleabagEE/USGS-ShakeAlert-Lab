@@ -58,7 +58,7 @@ final class SanitizedRejectionStore {
             throw new IllegalArgumentException("only expected sanitized rejection categories may persist");
         }
         Instant now = Instant.now();
-        String identity = outcome.update() == null ? null : outcome.update().updateIdentity();
+        String identity = outcome.message() == null ? null : outcome.message().messageIdentity();
         String json = "{"
             + field("timestamp_utc", now.toString()) + ","
             + field("capture_id", envelope.captureId()) + ","

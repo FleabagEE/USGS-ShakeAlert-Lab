@@ -314,7 +314,7 @@ public final class ScenarioOpenWireReceiver {
         factory.setAlwaysSyncSend(true);
         factory.setTrustAllPackages(false);
 
-        ShakeAlertEventParser parser = new ShakeAlertEventParser(
+        ShakeAlertMessageParser parser = new ShakeAlertMessageParser(
             new ShakeAlertEventParser.Limits(maximumPayloadBytes, 50000, 32, 100000,
                 maximumPayloadBytes));
         ShakeAlertEventProcessor processor = new ShakeAlertEventProcessor(parser);
@@ -352,8 +352,11 @@ public final class ScenarioOpenWireReceiver {
                 },
                 envelope -> {
                     ShakeAlertEventProcessor.Outcome outcome = processor.process(envelope);
-                    lifecycle(outcome.rejection() == null ? "EVENT_PARSED"
-                        : "EVENT_REJECTED_" + outcome.rejection().name(), accountId, topic);
+                    String processingEvent = outcome.rejection() == null
+                        ? (outcome.message() instanceof ShakeAlertFollowUp
+                            ? "FOLLOW_UP_PARSED" : "EVENT_PARSED")
+                        : "EVENT_REJECTED_" + outcome.rejection().name();
+                    lifecycle(processingEvent, accountId, topic);
                     if (outcome.rejection() != null
                             && outcome.rejection() != ShakeAlertEventParser.FailureCategory.PARSER_FAILURE
                             && rejectionStore != null) {

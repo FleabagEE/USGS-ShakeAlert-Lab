@@ -6,17 +6,23 @@ import java.util.Set;
 final class ShakeAlertEventProcessor {
     enum State { RUNNING, FAILED }
     record Outcome(ShakeAlertEventParser.FailureCategory rejection,
-                   ShakeAlertEventUpdate update, boolean domainProcessingSuppressed) {
-        static Outcome accepted(ShakeAlertEventUpdate update) { return new Outcome(null, update, false); }
+                   ShakeAlertMessage message, boolean domainProcessingSuppressed) {
+        static Outcome accepted(ShakeAlertMessage message) {
+            return new Outcome(null, message, false);
+        }
         static Outcome rejected(ShakeAlertEventParser.FailureCategory category) {
             return new Outcome(category, null, false);
         }
-        static Outcome duplicate(ShakeAlertEventUpdate update) {
-            return new Outcome(ShakeAlertEventParser.FailureCategory.DUPLICATE_DELIVERY, update, true);
+        static Outcome duplicate(ShakeAlertMessage message) {
+            return new Outcome(ShakeAlertEventParser.FailureCategory.DUPLICATE_DELIVERY,
+                message, true);
+        }
+        ShakeAlertEventUpdate update() {
+            return message instanceof ShakeAlertEventUpdate update ? update : null;
         }
     }
 
-    interface Parser { ShakeAlertEventUpdate parse(MessageEnvelope envelope) throws Exception; }
+    interface Parser { ShakeAlertMessage parse(MessageEnvelope envelope) throws Exception; }
 
     private final Parser parser;
     private final Set<String> brokerIds = new HashSet<>();
@@ -27,22 +33,23 @@ final class ShakeAlertEventProcessor {
     private java.time.Instant failureUtc;
 
     ShakeAlertEventProcessor(ShakeAlertEventParser parser) { this(parser::parse); }
+    ShakeAlertEventProcessor(ShakeAlertMessageParser parser) { this(parser::parse); }
     ShakeAlertEventProcessor(Parser parser) { this.parser = Objects.requireNonNull(parser, "parser"); }
 
     synchronized Outcome process(MessageEnvelope envelope) {
         Objects.requireNonNull(envelope, "envelope");
         if (state == State.FAILED) return Outcome.rejected(ShakeAlertEventParser.FailureCategory.PARSER_FAILURE);
         try {
-            ShakeAlertEventUpdate update = parser.parse(envelope);
+            ShakeAlertMessage message = parser.parse(envelope);
             String brokerId = envelope.jmsMessageId();
-            String domainPayloadId = update.updateIdentity() + ":" + envelope.payloadSha256();
+            String domainPayloadId = message.messageIdentity() + ":" + envelope.payloadSha256();
             if ((brokerId != null && brokerIds.contains(brokerId))
                     || domainPayloadIds.contains(domainPayloadId)) {
-                return Outcome.duplicate(update);
+                return Outcome.duplicate(message);
             }
             if (brokerId != null) brokerIds.add(brokerId);
             domainPayloadIds.add(domainPayloadId);
-            return Outcome.accepted(update);
+            return Outcome.accepted(message);
         } catch (ShakeAlertEventParser.ExpectedFailure expected) {
             return Outcome.rejected(expected.category());
         } catch (Exception | LinkageError unexpected) {

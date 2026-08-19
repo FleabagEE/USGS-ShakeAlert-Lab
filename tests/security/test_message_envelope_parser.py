@@ -71,3 +71,63 @@ def test_parser_has_no_jms_or_transport_native_dependency() -> None:
         source = (TOOLS / name).read_text(encoding="utf-8")
         assert "javax.jms" not in source
         assert "org.apache.activemq" not in source
+
+
+def test_follow_up_dispatch_and_profile_are_explicit_and_bounded() -> None:
+    dispatch = (TOOLS / "ShakeAlertMessageParser.java").read_text(encoding="utf-8")
+    parser = (TOOLS / "ShakeAlertFollowUpParser.java").read_text(encoding="utf-8")
+    assert '"follow_up".equals(messageType)' in dispatch
+    assert 'FOLLOW_UP_VERSION.equals(version)' in dispatch
+    assert 'FOLLOW_UP_ALGORITHM_VERSION.equals(algorithmVersion)' in dispatch
+    for control in (
+        'FOLLOW_UP_NOTICE_COUNT = 2',
+        'CONTRIBUTOR_COUNT = 2',
+        'CONTOUR_COUNT = 4',
+        'DECLARED_POLYGON_VERTICES = 8',
+        'POLYGON_COORDINATE_PAIRS = 9',
+        'MAXIMUM_NOTICE_CHARACTERS = 1024',
+        'MAXIMUM_POLYGON_CHARACTERS = 1024',
+        'Set.of("core_info", "contributors", "gm_info", "follow_up_info")',
+        'Set.of("MMI", "PGA", "PGV", "polygon")',
+        '"short_review"',
+        '"wea"',
+        '"cm/s/s"',
+        '"cm/s"',
+    ):
+        assert control in parser
+
+
+def test_follow_up_domain_is_typed_and_transport_independent() -> None:
+    hierarchy = (TOOLS / "ShakeAlertMessage.java").read_text(encoding="utf-8")
+    assert "sealed interface ShakeAlertMessage" in hierarchy
+    assert "permits ShakeAlertEventUpdate, ShakeAlertFollowUp" in hierarchy
+    for name in (
+        "ShakeAlertFollowUp.java", "FollowUpNotice.java",
+        "GroundMotionContour.java", "GeoCoordinate.java",
+        "ShakeAlertFollowUpParser.java", "ShakeAlertMessageParser.java",
+        "ShakeAlertXmlSupport.java",
+    ):
+        source = (TOOLS / name).read_text(encoding="utf-8")
+        assert "Map<String, Object>" not in source
+        assert "javax.jms" not in source
+        assert "org.apache.activemq" not in source
+
+
+def test_follow_up_xml_boundary_is_hardened_and_offline() -> None:
+    source = (TOOLS / "ShakeAlertXmlSupport.java").read_text(encoding="utf-8")
+    for control in (
+        "disallow-doctype-decl", "external-general-entities",
+        "external-parameter-entities", "load-external-dtd",
+        "ACCESS_EXTERNAL_DTD", "ACCESS_EXTERNAL_SCHEMA",
+        "setXIncludeAware(false)", "setExpandEntityReferences(false)",
+        "CodingErrorAction.REPORT",
+    ):
+        assert control in source
+
+
+def test_receiver_uses_profile_dispatch_after_capture_commit() -> None:
+    source = (TOOLS / "ScenarioOpenWireReceiver.java").read_text(encoding="utf-8")
+    assert "new ShakeAlertMessageParser(" in source
+    committed = source.index("NativeCaptureCommit committed = capture(")
+    processing = source.index("processor.process(envelope)", committed)
+    assert committed < processing

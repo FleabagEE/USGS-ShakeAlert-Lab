@@ -19,7 +19,7 @@ record ShakeAlertEventUpdate(
     List<Contributor> contributors,
     boolean groundMotionInfoPresent,
     Optional<FiniteFault> finiteFault
-) {
+) implements ShakeAlertMessage {
     enum MessageType { NEW, UPDATE }
 
     record Provenance(
@@ -71,4 +71,6 @@ record ShakeAlertEventUpdate(
     String updateIdentity() {
         return eventId + ":" + updateVersion + ":" + messageType.name();
     }
+
+    @Override public String messageIdentity() { return updateIdentity(); }
 }

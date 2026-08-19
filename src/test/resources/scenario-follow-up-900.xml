@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<event_message message_type="follow_up" version="900" category="test"
+    alg_vers="1.1.1 2019-04-17" orig_sys="EEWScenario"
+    ref_id="0" ref_src="" instance="fixture-instance"
+    timestamp="2026-08-18T16:40:22.000Z">
+  <core_info id="synthetic-follow-up-event">
+    <mag units="Mw">4.6</mag>
+    <mag_uncer units="Mw">0.2</mag_uncer>
+    <lat units="deg">33.04</lat>
+    <lat_uncer units="deg">0.1</lat_uncer>
+    <lon units="deg">-115.60</lon>
+    <lon_uncer units="deg">0.1</lon_uncer>
+    <depth units="km">8.0</depth>
+    <depth_uncer units="km">1.0</depth_uncer>
+    <orig_time units="UTC">2026-08-18T16:37:21.000Z</orig_time>
+    <orig_time_uncer units="sec">0.5</orig_time_uncer>
+    <likelihood>0.95</likelihood>
+    <num_stations>8</num_stations>
+  </core_info>
+  <contributors>
+    <contributor alg_name="synthetic-a" alg_version="1"
+        alg_instance="fixture-a" category="test"
+        event_id="synthetic-follow-up-event" version="7"/>
+    <contributor alg_name="synthetic-b" alg_version="2"
+        alg_instance="fixture-b" category="test"
+        event_id="synthetic-follow-up-event" version="7"/>
+  </contributors>
+  <gm_info>
+    <gmcontour_pred number="4">
+      <contour><MMI units="">2.0</MMI><PGA units="cm/s/s">1.2</PGA><PGV units="cm/s">0.3</PGV><polygon number="8">33.00,-115.70 33.00,-115.60 33.00,-115.50 33.05,-115.45 33.10,-115.50 33.10,-115.60 33.10,-115.70 33.05,-115.75 33.00,-115.70</polygon></contour>
+      <contour><MMI units="">3.0</MMI><PGA units="cm/s/s">2.4</PGA><PGV units="cm/s">0.6</PGV><polygon number="8">33.01,-115.69 33.01,-115.61 33.01,-115.51 33.05,-115.46 33.09,-115.51 33.09,-115.61 33.09,-115.69 33.05,-115.74 33.01,-115.69</polygon></contour>
+      <contour><MMI units="">4.0</MMI><PGA units="cm/s/s">4.8</PGA><PGV units="cm/s">1.2</PGV><polygon number="8">33.02,-115.68 33.02,-115.62 33.02,-115.52 33.05,-115.47 33.08,-115.52 33.08,-115.62 33.08,-115.68 33.05,-115.73 33.02,-115.68</polygon></contour>
+      <contour><MMI units="">5.0</MMI><PGA units="cm/s/s">9.6</PGA><PGV units="cm/s">2.4</PGV><polygon number="8">33.03,-115.67 33.03,-115.63 33.03,-115.53 33.05,-115.48 33.07,-115.53 33.07,-115.63 33.07,-115.67 33.05,-115.72 33.03,-115.67</polygon></contour>
+    </gmcontour_pred>
+  </gm_info>
+  <follow_up_info follow_up_type="true">
+    <message_text type="short_review">Synthetic short review for bounded offline parser validation.</message_text>
+    <message_text type="wea">Synthetic public follow-up for bounded offline parser validation.</message_text>
+  </follow_up_info>
+</event_message>

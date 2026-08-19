@@ -14,6 +14,7 @@ process.
 - [ADR 0006: MessageEnvelope and Safe Event Parsing](0006-message-envelope-and-event-parsing.md)
 - [ADR 0007: Repository-managed Scenario Service](0007-scenario-service-deployment.md)
 - [ADR 0008: Scenario SIGTERM Coordination](0008-scenario-sigterm-coordination.md)
+- [ADR 0009: Bounded Scenario Follow-up Profile](0009-bounded-scenario-follow-up-profile.md)
 
 The listed receiver ADRs are accepted. Production activation and any new
 Scenario connection remain separately authorized.
