@@ -27,10 +27,10 @@ def test_xml_parser_is_hardened_and_offline() -> None:
 
 def test_capture_commit_precedes_envelope_and_parser_in_receiver_source() -> None:
     source = (TOOLS / "ScenarioOpenWireReceiver.java").read_text(encoding="utf-8")
-    committed = source.index("NativeCaptureCommit committed = capture(")
-    envelope = source.index("return new MessageEnvelope(", committed)
+    capture = source.index("return capture(")
+    envelope = source.index("MessageEnvelope envelope = new MessageEnvelope(", capture)
     processing = source.index("processor.process(envelope)", envelope)
-    assert committed < envelope < processing
+    assert capture < envelope < processing
 
 
 def test_domain_model_is_typed_not_arbitrary_map() -> None:
@@ -128,6 +128,27 @@ def test_follow_up_xml_boundary_is_hardened_and_offline() -> None:
 def test_receiver_uses_profile_dispatch_after_capture_commit() -> None:
     source = (TOOLS / "ScenarioOpenWireReceiver.java").read_text(encoding="utf-8")
     assert "new ShakeAlertMessageParser(" in source
-    committed = source.index("NativeCaptureCommit committed = capture(")
-    processing = source.index("processor.process(envelope)", committed)
-    assert committed < processing
+    capture = source.index("return capture(")
+    processing = source.index("processor.process(envelope)", capture)
+    assert capture < processing
+
+
+def test_historical_manifest_is_sanitized_strict_and_frozen() -> None:
+    manifest = (ROOT / "src/test/resources/historical-capture-manifest.tsv").read_text()
+    lines = manifest.splitlines()
+    assert lines[0] == "source\tcapture_id\tpayload_size\tpayload_sha256\tdomain_type\tversion"
+    assert len(lines[1:]) == 28
+    assert sum("\tShakeAlertEventUpdate\t" in line for line in lines[1:]) == 26
+    assert sum("\tShakeAlertFollowUp\t900" in line for line in lines[1:]) == 2
+    assert "payload_base64" not in manifest
+    assert "password" not in manifest
+    assert all(line.startswith(("legacy\t", "persistent\t")) for line in lines[1:])
+
+
+def test_historical_regression_uses_named_members_not_directory_count() -> None:
+    source = (ROOT / "src/test/java/ShakeAlertHistoricalCaptureRegressionTest.java").read_text()
+    assert "loadManifest(MANIFEST)" in source
+    assert "missing historical capture" in source
+    assert "duplicate manifest capture ID" in source
+    assert "assertEquals(member.payloadSha256(), envelope.payloadSha256()" in source
+    assert "assertEquals(28, files.size())" not in source

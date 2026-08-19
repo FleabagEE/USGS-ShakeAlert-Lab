@@ -27,8 +27,11 @@ def test_openwire_native_capture_is_bounded_and_committed_atomically() -> None:
 def test_callback_precedes_validation_and_commit_event_follows_capture() -> None:
     callback_start = SOURCE.index("(message, generation) -> {")
     callback = SOURCE[callback_start : SOURCE.index("healthStatus == null", callback_start)]
-    assert callback.index("beforePayloadValidation") < callback.index("NativeCaptureCommit committed = capture(")
-    assert callback.index("NativeCaptureCommit committed = capture(") < callback.index('lifecycle("CAPTURE_COMMITTED"')
+    assert callback.index("beforePayloadValidation") < callback.index("return capture(")
+    service_callback = SERVICE_SOURCE[SERVICE_SOURCE.index("NativeCaptureCommit committed") : SERVICE_SOURCE.index("HealthSnapshot snapshot()") ]
+    assert service_callback.index("captureHandler.capture") < service_callback.index('emitLifecycle("CAPTURE_COMMITTED")')
+    assert service_callback.index('emitLifecycle("CAPTURE_COMMITTED")') < service_callback.index("message.acknowledge()")
+    assert service_callback.index("message.acknowledge()") < service_callback.index("postAcknowledgeHandler.process")
     listener = SERVICE_SOURCE[
         SERVICE_SOURCE.index("createdConsumer.setMessageListener") :
         SERVICE_SOURCE.index("createdConnection.start()")

@@ -14,7 +14,7 @@ Production remains untested and unauthorized.
 | Delivery evidence | None | M4.6 Westmoreland Event-only Scenario delivered 8 Event updates on 2026-08-18 |
 | Capture evidence | None | 8 completed, 0 temporary, 0 failures; payload sizes and SHA-256 values verified |
 | Publishing/fallback | None authorized | No publishing, wildcard, retry, or fallback path used |
-| Acknowledgment | REQUIRED FROM USGS | `CLIENT_ACKNOWLEDGE` session; captures intentionally remained unacknowledged pending broker-semantics review |
+| Acknowledgment | REQUIRED FROM USGS | `CLIENT_ACKNOWLEDGE` session; each delivery is acknowledged exactly once by the application after durable native capture commit and before interpretation |
 | Reconnect/keepalive | REQUIRED FROM USGS | Automatic retry/fallback disabled; one earlier listener later reported an inactivity exception and was replaced under authorization |
 | mTLS/client ID | REQUIRED FROM USGS | No client ID; mTLS requirement not established |
 | Encoding/schema/rate | REQUIRED FROM USGS | Eight native examples preserved locally; detailed schema/rate characterization remains future work |

@@ -175,11 +175,9 @@ final class ScenarioReceiverProcessLifecycleTest {
                 "eew.test_QuakeLogic-SA1.dm.data", (message, generation) -> {
                     callbackEntered.countDown();
                     if (blockCapture) blockCallback.await();
-                    return new MessageEnvelope(new byte[]{1}, java.time.Instant.EPOCH,
-                        "offline-capture", "offline-capture.json", "scenario", "offline-fake",
-                        "eew.test_QuakeLogic-SA1.dm.data", "QuakeLogic-SA1", null, null,
-                        false, java.util.Map.of(), generation);
-                }, envelope -> {}, snapshot -> {}, lock, event -> {
+                    return new NativeCaptureCommit(new byte[]{1}, java.time.Instant.EPOCH,
+                        "offline-capture", "offline-capture.json", null, null, false);
+                }, (committed, generation) -> {}, snapshot -> {}, lock, event -> {
                     events.add(event);
                     System.out.println("EVENT=" + event);
                     System.out.flush();

@@ -48,6 +48,8 @@ final class LocalHealthStatus implements ScenarioReceiverService.HealthSink {
             + field("messages_received", health.messagesReceived()) + ","
             + field("captures_committed", health.capturesCommitted()) + ","
             + field("capture_failures", health.captureFailures()) + ","
+            + field("messages_acknowledged", health.messagesAcknowledged()) + ","
+            + field("acknowledgement_failures", health.acknowledgementFailures()) + ","
             + field("callbacks_in_progress", health.callbacksInProgress()) + ","
             + field("async_jms_error", health.asyncJmsError()) + ","
             + field("parser_failed", parserFailed) + ","

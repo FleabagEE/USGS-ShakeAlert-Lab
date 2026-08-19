@@ -27,7 +27,7 @@ Expected data failures preserve the capture and allow subsequent deliveries. Une
 
 ## Consequences
 
-Transport, subscription, acknowledgment, retry, publishing, and Production-isolation behavior is unchanged. XML parsing never receives the live JMS object. Service-manager deployment and externally published parser health remain future work.
+Transport, subscription, retry, publishing, and Production-isolation behavior is unchanged. A later acknowledgement milestone places CLIENT_ACKNOWLEDGE after this durable capture boundary. XML parsing never receives the live JMS object. Service-manager deployment and externally published parser health remain future work.
 
 ## Observed finite-fault profile
 

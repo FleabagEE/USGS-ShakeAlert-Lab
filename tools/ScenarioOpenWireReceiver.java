@@ -79,35 +79,6 @@ public final class ScenarioOpenWireReceiver {
 
     record AuthenticatedSession(Connection connection, Session session) {}
 
-    static final class NativeCaptureCommit {
-        private final byte[] payload;
-        private final Instant receivedAtUtc;
-        private final String captureId;
-        private final String captureReference;
-        private final String jmsMessageId;
-        private final Instant brokerTimestamp;
-        private final boolean redelivered;
-
-        NativeCaptureCommit(byte[] payload, Instant receivedAtUtc, String captureId,
-                String captureReference, String jmsMessageId, Instant brokerTimestamp,
-                boolean redelivered) {
-            this.payload = payload.clone();
-            this.receivedAtUtc = receivedAtUtc;
-            this.captureId = captureId;
-            this.captureReference = captureReference;
-            this.jmsMessageId = jmsMessageId;
-            this.brokerTimestamp = brokerTimestamp;
-            this.redelivered = redelivered;
-        }
-        byte[] payload() { return payload.clone(); }
-        Instant receivedAtUtc() { return receivedAtUtc; }
-        String captureId() { return captureId; }
-        String captureReference() { return captureReference; }
-        String jmsMessageId() { return jmsMessageId; }
-        Instant brokerTimestamp() { return brokerTimestamp; }
-        boolean redelivered() { return redelivered; }
-    }
-
     @FunctionalInterface
     interface ConnectionSupplier { Connection create() throws Exception; }
 
@@ -338,10 +309,10 @@ public final class ScenarioOpenWireReceiver {
                 (message, generation) -> {
                     beforePayloadValidation(
                         event -> lifecycle(event, accountId, topic), () -> {});
-                    NativeCaptureCommit committed = capture(
-                        message, captureDirectory, topic, maximumPayloadBytes);
-                    lifecycle("CAPTURE_COMMITTED", accountId, topic);
-                    return new MessageEnvelope(
+                    return capture(message, captureDirectory, topic, maximumPayloadBytes);
+                },
+                (committed, generation) -> {
+                    MessageEnvelope envelope = new MessageEnvelope(
                         committed.payload(), committed.receivedAtUtc(), committed.captureId(),
                         committed.captureReference(), "scenario",
                         endpoint.host() + ":" + endpoint.port(), topic, accountId,
@@ -349,8 +320,6 @@ public final class ScenarioOpenWireReceiver {
                         committed.redelivered(),
                         Map.of("protocol", "ActiveMQ OpenWire", "protocol_version", "12"),
                         generation);
-                },
-                envelope -> {
                     ShakeAlertEventProcessor.Outcome outcome = processor.process(envelope);
                     String processingEvent = outcome.rejection() == null
                         ? (outcome.message() instanceof ShakeAlertFollowUp

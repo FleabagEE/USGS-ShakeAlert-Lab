@@ -274,6 +274,16 @@ final class ShakeAlertEventParserTest {
         assertTrue(duplicate.domainProcessingSuppressed());
     }
 
+    @Test void absentJmsIdUsesDomainIdentityAndPayloadHashDeterministically() {
+        ShakeAlertEventProcessor processor = new ShakeAlertEventProcessor(LIMITS);
+        MessageEnvelope first = envelope(later(), null, false, Map.of());
+        MessageEnvelope redelivery = envelope(later(), null, true, Map.of());
+        assertNull(processor.process(first).rejection());
+        ShakeAlertEventProcessor.Outcome duplicate = processor.process(redelivery);
+        assertEquals(ShakeAlertEventParser.FailureCategory.DUPLICATE_DELIVERY, duplicate.rejection());
+        assertTrue(duplicate.domainProcessingSuppressed());
+    }
+
     @Test void expectedParserFailurePreservesCaptureAndContinues(@TempDir Path directory) throws Exception {
         Path capture = directory.resolve("committed.json");
         Files.writeString(capture, "preserved");

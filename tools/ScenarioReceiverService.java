@@ -29,13 +29,13 @@ final class ScenarioReceiverService {
 
     @FunctionalInterface
     interface CaptureHandler {
-        MessageEnvelope capture(Message message, long activationGeneration) throws Exception;
+        NativeCaptureCommit capture(Message message, long activationGeneration) throws Exception;
     }
 
 
     @FunctionalInterface
-    interface EnvelopeHandler {
-        void process(MessageEnvelope envelope) throws Exception;
+    interface PostAcknowledgeHandler {
+        void process(NativeCaptureCommit committed, long activationGeneration) throws Exception;
     }
 
     @FunctionalInterface
@@ -60,6 +60,8 @@ final class ScenarioReceiverService {
         long messagesReceived,
         long capturesCommitted,
         long captureFailures,
+        long messagesAcknowledged,
+        long acknowledgementFailures,
         int callbacksInProgress,
         boolean asyncJmsError,
         String lastErrorCategory,
@@ -75,7 +77,7 @@ final class ScenarioReceiverService {
     private final String endpointName;
     private final String exactDestination;
     private final CaptureHandler captureHandler;
-    private final EnvelopeHandler envelopeHandler;
+    private final PostAcknowledgeHandler postAcknowledgeHandler;
     private final HealthSink healthSink;
     private final Consumer<String> lifecycleSink;
     private final InstanceLock instanceLock;
@@ -101,6 +103,8 @@ final class ScenarioReceiverService {
     private long messagesReceived;
     private long capturesCommitted;
     private long captureFailures;
+    private long messagesAcknowledged;
+    private long acknowledgementFailures;
     private boolean asyncJmsError;
     private String lastErrorCategory;
     private Instant lastErrorUtc;
@@ -113,12 +117,12 @@ final class ScenarioReceiverService {
         String endpointName,
         String exactDestination,
         CaptureHandler captureHandler,
-        EnvelopeHandler envelopeHandler,
+        PostAcknowledgeHandler postAcknowledgeHandler,
         HealthSink healthSink,
         InstanceLock instanceLock
     ) {
         this(factory, accountId, endpointName, exactDestination, captureHandler,
-            envelopeHandler, healthSink, instanceLock, ignored -> {});
+            postAcknowledgeHandler, healthSink, instanceLock, ignored -> {});
     }
 
     ScenarioReceiverService(
@@ -127,7 +131,7 @@ final class ScenarioReceiverService {
         String endpointName,
         String exactDestination,
         CaptureHandler captureHandler,
-        EnvelopeHandler envelopeHandler,
+        PostAcknowledgeHandler postAcknowledgeHandler,
         HealthSink healthSink,
         InstanceLock instanceLock,
         Consumer<String> lifecycleSink
@@ -137,7 +141,8 @@ final class ScenarioReceiverService {
         this.endpointName = Objects.requireNonNull(endpointName, "endpointName");
         this.exactDestination = Objects.requireNonNull(exactDestination, "exactDestination");
         this.captureHandler = Objects.requireNonNull(captureHandler, "captureHandler");
-        this.envelopeHandler = Objects.requireNonNull(envelopeHandler, "envelopeHandler");
+        this.postAcknowledgeHandler = Objects.requireNonNull(
+            postAcknowledgeHandler, "postAcknowledgeHandler");
         this.healthSink = Objects.requireNonNull(healthSink, "healthSink");
         this.instanceLock = Objects.requireNonNull(instanceLock, "instanceLock");
         this.lifecycleSink = Objects.requireNonNull(lifecycleSink, "lifecycleSink");
@@ -316,24 +321,36 @@ final class ScenarioReceiverService {
             publishHealthLocked();
         }
         try {
-            MessageEnvelope envelope;
+            NativeCaptureCommit committed;
             try {
-                envelope = captureHandler.capture(message, callbackGeneration);
+                committed = Objects.requireNonNull(
+                    captureHandler.capture(message, callbackGeneration), "capture commit");
             } catch (Exception error) {
-                synchronized (monitor) {
-                    captureFailures++;
-                    recordErrorLocked("capture");
-                }
+                failAdmittedCallback("capture", false);
                 return false;
             }
             synchronized (monitor) {
                 capturesCommitted++;
                 publishHealthLocked();
             }
+            emitLifecycle("CAPTURE_COMMITTED");
+            emitLifecycle("ACKNOWLEDGEMENT_STARTED");
             try {
-                envelopeHandler.process(envelope);
+                message.acknowledge();
             } catch (Exception error) {
-                synchronized (monitor) { recordErrorLocked("post_capture_processing"); }
+                failAdmittedCallback("acknowledgement_failed", true);
+                emitLifecycle("ACKNOWLEDGEMENT_FAILED");
+                return false;
+            }
+            synchronized (monitor) {
+                messagesAcknowledged++;
+                publishHealthLocked();
+            }
+            emitLifecycle("ACKNOWLEDGED");
+            try {
+                postAcknowledgeHandler.process(committed, callbackGeneration);
+            } catch (Exception error) {
+                synchronized (monitor) { recordErrorLocked("post_acknowledgement_processing"); }
             }
             return true;
         } finally {
@@ -342,6 +359,16 @@ final class ScenarioReceiverService {
                 publishHealthLocked();
                 monitor.notifyAll();
             }
+        }
+    }
+
+    private void failAdmittedCallback(String category, boolean acknowledgementFailure) {
+        synchronized (monitor) {
+            if (acknowledgementFailure) acknowledgementFailures++;
+            else captureFailures++;
+            shutdownRequested = true;
+            failLocked(category, false);
+            monitor.notifyAll();
         }
     }
 
@@ -354,7 +381,8 @@ final class ScenarioReceiverService {
             state, stateEnteredUtc, processStartedUtc, connected,
             authenticated, subscribed, connectionStarted, accountId,
             endpointName, exactDestination, messagesReceived,
-            capturesCommitted, captureFailures, callbacksInProgress,
+            capturesCommitted, captureFailures, messagesAcknowledged,
+            acknowledgementFailures, callbacksInProgress,
             asyncJmsError, lastErrorCategory, lastErrorUtc, shutdownRequested);
     }
 

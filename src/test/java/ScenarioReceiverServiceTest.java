@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.jms.Connection;
@@ -255,6 +256,146 @@ final class ScenarioReceiverServiceTest {
         assertEquals(ScenarioReceiverService.LifecycleState.FAILED, service.state());
     }
 
+    @Test void captureAndAcknowledgementFailuresFailClosed() throws Exception {
+        Fixture captureFailure = new Fixture();
+        AtomicInteger captures = new AtomicInteger();
+        ScenarioReceiverService captureService = captureFailure.service(message -> {
+            captures.incrementAndGet();
+            throw new java.io.IOException("private capture detail");
+        });
+        captureService.start();
+        captureFailure.listener.get().onMessage(captureFailure.message);
+        captureFailure.listener.get().onMessage(captureFailure.message);
+        assertEquals(1, captures.get());
+        assertEquals(0, captureFailure.acknowledgementCalls.get());
+        assertEquals(ScenarioReceiverService.LifecycleState.FAILED, captureService.state());
+        assertEquals("capture", captureService.snapshot().lastErrorCategory());
+        assertEquals(1, captureService.snapshot().captureFailures());
+        assertEquals(1, captureFailure.factory.createCalls);
+        captureService.stop(Duration.ofSeconds(1));
+
+        Fixture ackFailure = new Fixture();
+        ackFailure.acknowledgementFailure = new JMSException("private acknowledgement detail");
+        ScenarioReceiverService ackService = ackFailure.service(message -> {});
+        ackService.start();
+        ackFailure.listener.get().onMessage(ackFailure.message);
+        assertEquals(1, ackService.snapshot().capturesCommitted());
+        assertEquals(1, ackFailure.acknowledgementCalls.get());
+        assertEquals(0, ackService.snapshot().messagesAcknowledged());
+        assertEquals(1, ackService.snapshot().acknowledgementFailures());
+        assertEquals(ScenarioReceiverService.LifecycleState.FAILED, ackService.state());
+        assertTrue(ackFailure.events.contains("ACKNOWLEDGEMENT_FAILED"));
+        assertFalse(ackFailure.events.contains("ACKNOWLEDGED"));
+        ackFailure.listener.get().onMessage(ackFailure.message);
+        assertEquals(1, ackFailure.acknowledgementCalls.get());
+        assertEquals(1, ackFailure.factory.createCalls);
+        ackService.stop(Duration.ofSeconds(1));
+    }
+
+    @Test void acknowledgeWaitsForCaptureAndEveryDeliveryGetsOneAttempt() throws Exception {
+        Fixture fixture = new Fixture();
+        CountDownLatch captureEntered = new CountDownLatch(1);
+        CountDownLatch releaseCapture = new CountDownLatch(1);
+        ScenarioReceiverService service = fixture.service(message -> {
+            captureEntered.countDown();
+            assertTrue(releaseCapture.await(2, TimeUnit.SECONDS));
+        });
+        service.start();
+        Thread callback = new Thread(() -> fixture.listener.get().onMessage(fixture.message));
+        callback.start();
+        assertTrue(captureEntered.await(1, TimeUnit.SECONDS));
+        assertEquals(0, fixture.acknowledgementCalls.get());
+        releaseCapture.countDown();
+        callback.join(2000);
+        fixture.listener.get().onMessage(fixture.message);
+        assertEquals(2, service.snapshot().capturesCommitted());
+        assertEquals(2, fixture.acknowledgementCalls.get());
+        assertEquals(2, service.snapshot().messagesAcknowledged());
+        service.stop(Duration.ofSeconds(1));
+    }
+
+    @Test void shutdownDuringAckWaitsAndDeadlineFailureNeverClaimsStopped() throws Exception {
+        Fixture healthy = new Fixture();
+        healthy.acknowledgementEntered = new CountDownLatch(1);
+        healthy.acknowledgementRelease = new CountDownLatch(1);
+        ScenarioReceiverService service = healthy.service(message -> {});
+        service.start();
+        Thread callback = new Thread(() -> healthy.listener.get().onMessage(healthy.message));
+        callback.start();
+        assertTrue(healthy.acknowledgementEntered.await(1, TimeUnit.SECONDS));
+        service.requestShutdown();
+        AtomicReference<ScenarioReceiverService.LifecycleState> result = new AtomicReference<>();
+        Thread coordinator = new Thread(() -> result.set(service.stop(Duration.ofSeconds(2))));
+        coordinator.start();
+        awaitClose(healthy.closes, "consumer");
+        assertFalse(healthy.closes.contains("session"));
+        healthy.acknowledgementRelease.countDown();
+        callback.join(2000); coordinator.join(2000);
+        assertEquals(ScenarioReceiverService.LifecycleState.STOPPED, result.get());
+
+        Fixture expired = new Fixture();
+        expired.acknowledgementEntered = new CountDownLatch(1);
+        expired.acknowledgementRelease = new CountDownLatch(1);
+        ScenarioReceiverService expiredService = expired.service(message -> {});
+        expiredService.start();
+        Thread expiredCallback = new Thread(() -> expired.listener.get().onMessage(expired.message));
+        expiredCallback.start();
+        assertTrue(expired.acknowledgementEntered.await(1, TimeUnit.SECONDS));
+        assertEquals(ScenarioReceiverService.LifecycleState.FAILED, expiredService.stop(Duration.ofMillis(5)));
+        assertEquals(List.of("consumer"), expired.closes);
+        assertFalse(expired.events.contains("STOPPED"));
+        expired.acknowledgementRelease.countDown();
+        expiredCallback.join(2000);
+        expiredService.stop(Duration.ofSeconds(1));
+        assertEquals(ScenarioReceiverService.LifecycleState.FAILED, expiredService.state());
+        assertFalse(expired.events.contains("STOPPED"));
+    }
+
+    @Test void expectedAndUnexpectedParserOutcomesOccurAfterAcknowledgement() throws Exception {
+        for (boolean unexpected : List.of(false, true)) {
+            Fixture fixture = new Fixture();
+            ShakeAlertEventProcessor processor = new ShakeAlertEventProcessor(envelope -> {
+                if (unexpected) throw new IllegalStateException("private parser detail");
+                throw new ShakeAlertEventParser.ExpectedFailure(
+                    ShakeAlertEventParser.FailureCategory.UNSUPPORTED_SCHEMA);
+            });
+            AtomicReference<ShakeAlertEventProcessor.Outcome> outcome = new AtomicReference<>();
+            ScenarioReceiverService service = new ScenarioReceiverService(
+                fixture.factory, ACCOUNT, "scenario-openwire", TOPIC,
+                (message, generation) -> new NativeCaptureCommit(new byte[]{1},
+                    java.time.Instant.EPOCH, "capture", "capture.json", null, null, false),
+                (commit, generation) -> {
+                    assertTrue(fixture.events.contains("ACKNOWLEDGED"));
+                    MessageEnvelope envelope = new MessageEnvelope(commit.payload(),
+                        commit.receivedAtUtc(), commit.captureId(), commit.captureReference(),
+                        "scenario", "scenario.eew.shakealert.org:61612", TOPIC, ACCOUNT,
+                        commit.jmsMessageId(), commit.brokerTimestamp(), commit.redelivered(),
+                        java.util.Map.of(), generation);
+                    outcome.set(processor.process(envelope));
+                }, snapshot -> {}, fixture.instanceLock, fixture.events::add);
+            service.start();
+            fixture.listener.get().onMessage(fixture.message);
+            assertEquals(1, fixture.acknowledgementCalls.get());
+            assertEquals(unexpected ? ShakeAlertEventParser.FailureCategory.PARSER_FAILURE
+                    : ShakeAlertEventParser.FailureCategory.UNSUPPORTED_SCHEMA,
+                outcome.get().rejection());
+            assertEquals(unexpected ? ShakeAlertEventProcessor.State.FAILED
+                    : ShakeAlertEventProcessor.State.RUNNING, processor.state());
+            service.stop(Duration.ofSeconds(1));
+        }
+    }
+
+    @Test void nativeCaptureCommitDefensivelyOwnsPayload() {
+        byte[] input = new byte[]{1, 2};
+        NativeCaptureCommit commit = new NativeCaptureCommit(input, java.time.Instant.EPOCH,
+            "capture", "capture.json", null, null, true);
+        input[0] = 9;
+        byte[] returned = commit.payload();
+        returned[1] = 9;
+        assertArrayEquals(new byte[]{1, 2}, commit.payload());
+        assertTrue(commit.redelivered());
+    }
+
     @Test void callbackCommitsCaptureBeforeEnvelopeProcessingAndLeaksNoJmsObject() throws Exception {
         Fixture fixture = new Fixture();
         List<String> order = new ArrayList<>();
@@ -262,23 +403,22 @@ final class ScenarioReceiverServiceTest {
             fixture.factory, ACCOUNT, "scenario-openwire", TOPIC,
             (message, generation) -> {
                 order.add("MESSAGE_CALLBACK");
-                order.add("CAPTURE_COMMITTED");
-                return new MessageEnvelope(
-                    new byte[]{1}, java.time.Instant.EPOCH, "capture", "capture.json",
-                    "scenario", "scenario.eew.shakealert.org:61612", TOPIC, ACCOUNT,
-                    null, null, false, java.util.Map.of(), generation);
+                return new NativeCaptureCommit(new byte[]{1}, java.time.Instant.EPOCH,
+                    "capture", "capture.json", null, null, false);
             },
-            envelope -> {
+            (committed, generation) -> {
                 order.add("ENVELOPE_CREATED");
-                assertFalse(envelope instanceof Object && envelope.getClass().getName().startsWith("javax.jms"));
+                assertFalse(committed.getClass().getName().startsWith("javax.jms"));
                 order.add("PARSING_BEGINS");
-            }, snapshot -> {}, fixture.instanceLock);
+            }, snapshot -> {}, fixture.instanceLock, order::add);
         service.start();
 
         fixture.listener.get().onMessage(fixture.message);
 
         assertEquals(List.of("MESSAGE_CALLBACK", "CAPTURE_COMMITTED",
+            "ACKNOWLEDGEMENT_STARTED", "ACKNOWLEDGED",
             "ENVELOPE_CREATED", "PARSING_BEGINS"), order);
+        assertEquals(1, fixture.acknowledgementCalls.get());
         service.stop(Duration.ofSeconds(1));
     }
 
@@ -292,10 +432,25 @@ final class ScenarioReceiverServiceTest {
 
     private static final class Fixture {
         final List<String> closes = java.util.Collections.synchronizedList(new ArrayList<>());
+        final List<String> events = java.util.Collections.synchronizedList(new ArrayList<>());
         final AtomicReference<MessageListener> listener = new AtomicReference<>();
         final AtomicReference<ExceptionListener> exceptionListener = new AtomicReference<>();
         final FakeInstanceLock instanceLock = new FakeInstanceLock();
-        final Message message = proxy(Message.class, (method, args) -> defaultValue(method.getReturnType()));
+        final AtomicInteger acknowledgementCalls = new AtomicInteger();
+        volatile JMSException acknowledgementFailure;
+        volatile CountDownLatch acknowledgementEntered;
+        volatile CountDownLatch acknowledgementRelease;
+        final Message message = proxy(Message.class, (method, args) -> {
+            if (method.getName().equals("acknowledge")) {
+                acknowledgementCalls.incrementAndGet();
+                events.add("ACK_CALL");
+                if (acknowledgementEntered != null) acknowledgementEntered.countDown();
+                if (acknowledgementRelease != null) acknowledgementRelease.await(2, TimeUnit.SECONDS);
+                if (acknowledgementFailure != null) throw acknowledgementFailure;
+                return null;
+            }
+            return defaultValue(method.getReturnType());
+        });
         JMSException sessionFailure;
         JMSException consumerFailure;
         JMSException startFailure;
@@ -348,12 +503,10 @@ final class ScenarioReceiverServiceTest {
                 factory, ACCOUNT, "scenario-openwire", TOPIC,
                 (message, generation) -> {
                     capture.capture(message);
-                    return new MessageEnvelope(
-                        new byte[]{1}, java.time.Instant.EPOCH, "capture", "capture.json",
-                        "scenario", "scenario.eew.shakealert.org:61612", TOPIC, ACCOUNT,
-                        null, null, false, java.util.Map.of(), generation);
+                    return new NativeCaptureCommit(new byte[]{1}, java.time.Instant.EPOCH,
+                    "capture", "capture.json", null, null, false);
                 },
-                envelope -> {}, snapshot -> {}, instanceLock);
+                (committed, generation) -> {}, snapshot -> {}, instanceLock, events::add);
         }
 
         interface TestCapture { void capture(Message message) throws Exception; }

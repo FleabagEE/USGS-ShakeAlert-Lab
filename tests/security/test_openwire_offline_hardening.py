@@ -62,6 +62,16 @@ def test_consumer_is_exact_nondurable_topic_without_selector_or_no_local() -> No
     assert expected in SOURCE
 
 
+def test_client_acknowledgement_is_explicit_and_transport_ack_mode_is_unchanged() -> None:
+    assert "Session.CLIENT_ACKNOWLEDGE" in SERVICE_SOURCE
+    assert "Session.AUTO_ACKNOWLEDGE" not in SERVICE_SOURCE
+    assert "message.acknowledge()" in SERVICE_SOURCE
+    assert "setSendAcksAsync" not in SOURCE + SERVICE_SOURCE
+    callback = SERVICE_SOURCE[SERVICE_SOURCE.index("NativeCaptureCommit committed") : SERVICE_SOURCE.index("HealthSnapshot snapshot()") ]
+    assert callback.index("captureHandler.capture") < callback.index("message.acknowledge()")
+    assert callback.index("message.acknowledge()") < callback.index("postAcknowledgeHandler.process")
+
+
 def test_no_retry_fallback_publishing_or_production_path() -> None:
     for forbidden in (
         "createProducer",
@@ -78,7 +88,7 @@ def test_authentication_and_callback_lifecycle_ordering() -> None:
     assert helper.index("connection.createSession") < helper.index('events.accept("AUTHENTICATED")')
     callback_start = SOURCE.index("(message, generation) -> {")
     callback = SOURCE[callback_start : SOURCE.index("healthStatus == null", callback_start)]
-    assert callback.index("beforePayloadValidation") < callback.index("NativeCaptureCommit committed = capture(")
+    assert callback.index("beforePayloadValidation") < callback.index("return capture(")
     service_callback = SERVICE_SOURCE[
         SERVICE_SOURCE.index("createdConsumer.setMessageListener") :
         SERVICE_SOURCE.index("createdConnection.start()")
@@ -89,8 +99,10 @@ def test_authentication_and_callback_lifecycle_ordering() -> None:
         "RUNNING", "STOPPING", "STOPPED", "FAILED",
     ):
         assert state in SERVICE_SOURCE
-    for event in ("MESSAGE_CALLBACK", "CAPTURE_COMMITTED"):
-        assert f'"{event}"' in SOURCE
+    assert '"MESSAGE_CALLBACK"' in SOURCE
+    for event in ("CAPTURE_COMMITTED", "ACKNOWLEDGEMENT_STARTED",
+                  "ACKNOWLEDGED", "ACKNOWLEDGEMENT_FAILED"):
+        assert f'"{event}"' in SERVICE_SOURCE
     for event in ("SHUTDOWN_REQUESTED", "CALLBACK_ADMISSION_CLOSED",
                   "CONSUMER_CLOSED", "CALLBACK_DRAIN_COMPLETE", "SESSION_CLOSED",
                   "CONNECTION_CLOSED", "INSTANCE_LOCK_RELEASED"):

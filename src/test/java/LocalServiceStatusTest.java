@@ -31,12 +31,13 @@ final class LocalServiceStatusTest {
                 "lifecycle_state", "state_entered_utc", "process_started_utc",
                 "connected", "authenticated", "subscribed", "connection_started",
                 "account_id", "endpoint_name", "exact_destination", "messages_received",
-                "captures_committed", "capture_failures", "callbacks_in_progress",
+                "captures_committed", "capture_failures", "messages_acknowledged",
+                "acknowledgement_failures", "callbacks_in_progress",
                 "async_jms_error", "parser_failed", "parser_failure_count",
                 "last_error_category", "last_error_utc", "shutdown_requested")) {
             assertTrue(json.contains("\"" + field + "\":"), field);
         }
-        assertEquals(20, json.split("\":", -1).length - 1);
+        assertEquals(22, json.split("\":", -1).length - 1);
         for (String forbidden : Set.of("password", "credential", "payload", "broker_header",
                 "exception_text", "capture_reference")) assertFalse(json.contains(forbidden));
         assertEquals(Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE,
@@ -153,7 +154,7 @@ final class LocalServiceStatusTest {
             boolean asyncError, boolean shutdownRequested) {
         return new ScenarioReceiverService.HealthSnapshot(state, Instant.EPOCH, Instant.EPOCH,
             connected, authenticated, subscribed, connectionStarted, "QuakeLogic-SA1",
-            "scenario-openwire", TOPIC, 2, 2, 0, 0, asyncError,
+            "scenario-openwire", TOPIC, 2, 2, 0, 2, 0, 0, asyncError,
             asyncError ? "async_jms" : null, asyncError ? Instant.EPOCH : null,
             shutdownRequested);
     }
