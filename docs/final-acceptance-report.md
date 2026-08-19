@@ -27,3 +27,20 @@ The repository-defined Java build is verified on this host with Ubuntu Maven
 compilation, all 10 JUnit tests, dependency convergence, upper-bound dependency
 enforcement, duplicate-class checks, packaging, runtime-classpath verification,
 and two clean-build JAR SHA-256 comparison passed.
+
+## Managed receiver validation — 2026-08-19
+
+Commit `cd8e55c` passed the complete offline pre-deployment suite, and its
+installed application class tree matched the repository build exactly. One
+controlled, bounded Scenario activation then passed TLS/JMS authentication,
+subscription readiness, and the `RUNNING` lifecycle gate with `READY=yes`.
+No asynchronous JMS failure occurred, so no sanitized incident record was
+created.
+
+Normal systemd shutdown completed in the designed resource-close order, the
+receiver exited with status 0, and systemd reported success. All 27 existing
+captures and six existing rejection records were preserved; the bounded idle
+observation created no new capture or rejection. After shutdown, no receiver
+process or broker connection remained. The service stayed disabled with
+`Restart=no`. Credentials and configuration were unchanged, and no Production
+or CUBE connection or publishing activity occurred.
