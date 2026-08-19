@@ -20,6 +20,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 final class ScenarioOpenWireReceiverTest {
+    @Test void runtimeAsyncFailureKeepsSanitizedTerminalCategory() {
+        Exception failure = new ScenarioOpenWireReceiver.TerminalServiceException(
+            "INACTIVITY_TIMEOUT");
+        assertEquals("INACTIVITY_TIMEOUT",
+            ScenarioOpenWireReceiver.terminalFailureCategory(failure));
+        assertNotEquals("startup", ScenarioOpenWireReceiver.terminalFailureCategory(failure));
+        assertEquals("startup", ScenarioOpenWireReceiver.terminalFailureCategory(
+            new java.io.IOException("private startup detail")));
+    }
+
     private static final String ACCOUNT = "QuakeLogic-SA1";
 
     @Test void usernameAndPasswordHaveCorrectSemanticOrder() {

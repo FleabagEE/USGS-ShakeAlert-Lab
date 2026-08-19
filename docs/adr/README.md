@@ -16,6 +16,7 @@ process.
 - [ADR 0008: Scenario SIGTERM Coordination](0008-scenario-sigterm-coordination.md)
 - [ADR 0009: Bounded Scenario Follow-up Profile](0009-bounded-scenario-follow-up-profile.md)
 - [ADR 0010: Acknowledge Only After Durable Native Capture](0010-client-acknowledge-after-durable-capture.md)
+- [ADR 0011: Sanitized Asynchronous JMS Failure Observability](0011-sanitized-async-jms-failure-observability.md)
 
 The listed receiver ADRs are accepted. Production activation and any new
 Scenario connection remain separately authorized.

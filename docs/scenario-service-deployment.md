@@ -11,7 +11,7 @@ systemd owns the process; there is no daemonization or PID file. `bin/java-recei
 | Path | Ownership | Mode | Lifetime | Purpose |
 |---|---|---:|---|---|
 | `/run/shakealert-scenario-receiver` | `quakelogic:quakelogic` | `0750` | removed after stop | instance lock and atomic `health.json` |
-| `/var/lib/shakealert-scenario-receiver` | `quakelogic:quakelogic` | `0750` | persistent | `captures/` and `rejections/` |
+| `/var/lib/shakealert-scenario-receiver` | `quakelogic:quakelogic` | `0750` | persistent | `captures/`, `rejections/`, and sanitized `incidents/` |
 
 systemd creates both roots. Health and rejection files are `0640`; child directories are `0750`, reinforced by `UMask=0027`. Logs use the system journal. Credentials stay separate, are not copied, and are exposed read-only by the sandbox.
 
@@ -34,6 +34,13 @@ Parser `FAILED` leaves the process alive so native capture remains observable. I
 ## Rejection retention and duplicates
 
 Expected rejection records contain only UTC timestamp, capture ID, payload SHA-256, sanitized category, and an optional already-parsed Event/update identity; they contain no payload text, credentials, broker headers, or raw exception strings. Retention is 1,000 files, 64 MiB total, and 30 days. Expired records are deleted first; remaining records are ordered by modification time then filename and deleted oldest-first until count and byte limits both hold. The directory is fsynced.
+
+The latest asynchronous JMS failure is preserved separately at
+`incidents/async-jms-latest.json` (`0750` directory, `0640` file, maximum 4,096
+bytes). It uses type-only bounded classification and contains no raw exception
+message or stack trace. Publication uses a temporary file, file fsync, atomic
+replacement, and directory fsync. A diagnostic-write failure never blocks the
+service's fail-closed ordered teardown.
 
 Duplicate detection remains activation-local. After restart, an old redelivery may be processed again; every delivery is still captured. The smallest future persistent design is an atomic bounded store keyed by trusted JMS ID and `(event/update identity, payload SHA-256)`, committed only after accepted processing.
 

@@ -100,9 +100,22 @@ def test_local_readiness_script_truth_table(tmp_path: Path) -> None:
 def test_health_and_rejection_sources_exclude_secret_and_payload_fields() -> None:
     health = (ROOT / "tools" / "LocalHealthStatus.java").read_text()
     rejection = (ROOT / "tools" / "SanitizedRejectionStore.java").read_text()
+    incident = (ROOT / "tools" / "SanitizedAsyncJmsIncidentStore.java").read_text()
     for forbidden in ("credentialPath", "password", "payloadBase64", "getText()",
-                      "getObjectProperty", "rawException"):
-        assert forbidden not in health + rejection
+                      "getObjectProperty", "rawException", "printStackTrace"):
+        assert forbidden not in health + rejection + incident
+
+
+def test_async_incident_is_bounded_atomic_and_persistent() -> None:
+    incident = (ROOT / "tools" / "SanitizedAsyncJmsIncidentStore.java").read_text()
+    receiver = (ROOT / "tools" / "ScenarioOpenWireReceiver.java").read_text()
+    for required in (
+        "MAX_RECORD_BYTES = 4096", "channel.force(true)",
+        "StandardCopyOption.ATOMIC_MOVE", "StandardCopyOption.REPLACE_EXISTING",
+        "Files.setPosixFilePermissions", 'resolve("incidents")',
+    ):
+        assert required in incident + receiver
+    assert "RuntimeDirectory" not in receiver
 
 
 def test_duplicate_persistence_is_explicitly_disabled() -> None:

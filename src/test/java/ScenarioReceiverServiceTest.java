@@ -208,19 +208,112 @@ final class ScenarioReceiverServiceTest {
 
     @Test void asynchronousJmsFailureLatchesFailedAndRequestsCoordinatorShutdown() throws Exception {
         Fixture fixture = new Fixture();
-        ScenarioReceiverService service = fixture.service(message -> {});
+        AtomicReference<AsyncJmsFailureClassifier.Diagnostic> incident = new AtomicReference<>();
+        List<String> failureEvents = new ArrayList<>();
+        ScenarioReceiverService service = fixture.service(message -> {}, incident::set,
+            (event, category) -> failureEvents.add(event + ":" + category.name()));
         service.start();
 
-        fixture.exceptionListener.get().onException(new JMSException("raw broker text"));
+        JMSException failure = new JMSException("raw broker text password=private");
+        failure.setLinkedException(new java.io.EOFException("private transport detail"));
+        fixture.exceptionListener.get().onException(failure);
 
         ScenarioReceiverService.HealthSnapshot health = service.snapshot();
         assertEquals(ScenarioReceiverService.LifecycleState.FAILED, health.lifecycleState());
         assertTrue(health.asyncJmsError());
         assertTrue(health.shutdownRequested());
-        assertEquals("async_jms", health.lastErrorCategory());
+        assertEquals("TRANSPORT_EOF", health.lastErrorCategory());
+        assertEquals(0, health.messagesReceived());
+        assertEquals(0, health.capturesCommitted());
+        assertEquals(0, health.messagesAcknowledged());
+        assertEquals(0, health.acknowledgementFailures());
         assertFalse(health.toString().contains("raw broker text"));
+        assertNotNull(incident.get());
+        assertEquals(AsyncJmsFailureClassifier.Category.TRANSPORT_EOF,
+            incident.get().failureCategory());
+        assertEquals(List.of("ASYNC_EXCEPTION:TRANSPORT_EOF", "FAILED:TRANSPORT_EOF"),
+            failureEvents);
         assertTrue(fixture.closes.isEmpty(), "JMS callback must not perform teardown");
         service.stop(Duration.ofSeconds(1));
+        assertEquals(List.of("consumer", "session", "connection"), fixture.closes);
+    }
+
+    @Test void diagnosticWriteFailureCannotPreventFailedOrderedTeardown() throws Exception {
+        Fixture fixture = new Fixture();
+        List<String> failureEvents = new ArrayList<>();
+        ScenarioReceiverService service = fixture.service(message -> {}, diagnostic -> {
+            throw new IllegalStateException("private incident path");
+        }, (event, category) -> failureEvents.add(event));
+        service.start();
+        fixture.exceptionListener.get().onException(new JMSException("private broker text"));
+
+        assertEquals(ScenarioReceiverService.LifecycleState.FAILED, service.state());
+        assertTrue(service.snapshot().shutdownRequested());
+        assertEquals(List.of("ASYNC_EXCEPTION", "FAILED"), failureEvents);
+        service.stop(Duration.ofSeconds(1));
+        assertEquals(List.of("consumer", "session", "connection"), fixture.closes);
+        assertTrue(fixture.instanceLock.released());
+        assertEquals(ScenarioReceiverService.LifecycleState.FAILED, service.state());
+    }
+
+    @Test void blockingDiagnosticSinkIsNotOnCoordinatorWakeupPath() throws Exception {
+        Fixture fixture = new Fixture();
+        CountDownLatch diagnosticEntered = new CountDownLatch(1);
+        CountDownLatch releaseDiagnostic = new CountDownLatch(1);
+        ScenarioReceiverService service = fixture.service(message -> {}, diagnostic -> {
+            diagnosticEntered.countDown();
+            try {
+                assertTrue(releaseDiagnostic.await(2, TimeUnit.SECONDS));
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                fail("diagnostic sink interrupted");
+            }
+        }, (event, category) -> {});
+        service.start();
+
+        AtomicReference<ScenarioReceiverService.LifecycleState> teardownResult =
+            new AtomicReference<>();
+        CountDownLatch coordinatorFinished = new CountDownLatch(1);
+        Thread coordinator = new Thread(() -> {
+            try {
+                service.awaitShutdownRequest();
+                teardownResult.set(service.stop(Duration.ofSeconds(1)));
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            } finally {
+                coordinatorFinished.countDown();
+            }
+        });
+        coordinator.start();
+
+        AtomicReference<Throwable> exceptionHandlerFailure = new AtomicReference<>();
+        CountDownLatch exceptionHandlerFinished = new CountDownLatch(1);
+        Thread exceptionHandler = new Thread(() -> {
+            try {
+                fixture.exceptionListener.get().onException(
+                    new JMSException("private broker text"));
+            } catch (Throwable error) {
+                exceptionHandlerFailure.set(error);
+            } finally {
+                exceptionHandlerFinished.countDown();
+            }
+        });
+        exceptionHandler.start();
+
+        assertTrue(diagnosticEntered.await(1, TimeUnit.SECONDS));
+        assertTrue(fixture.consumerClosed.await(1, TimeUnit.SECONDS),
+            "coordinator must close consumer while diagnostic persistence is blocked");
+        assertTrue(coordinatorFinished.await(1, TimeUnit.SECONDS));
+        assertEquals(List.of("consumer", "session", "connection"), fixture.closes);
+        assertEquals(ScenarioReceiverService.LifecycleState.FAILED, teardownResult.get());
+        assertTrue(exceptionHandler.isAlive(), "diagnostic sink should still be blocked");
+
+        releaseDiagnostic.countDown();
+        assertTrue(exceptionHandlerFinished.await(1, TimeUnit.SECONDS));
+        assertNull(exceptionHandlerFailure.get());
+        exceptionHandler.join(1000);
+        assertFalse(exceptionHandler.isAlive());
+        assertFalse(coordinator.isAlive());
     }
 
     @Test void illegalBackwardLifecycleTransitionFailsClosed() {
@@ -435,6 +528,7 @@ final class ScenarioReceiverServiceTest {
         final List<String> events = java.util.Collections.synchronizedList(new ArrayList<>());
         final AtomicReference<MessageListener> listener = new AtomicReference<>();
         final AtomicReference<ExceptionListener> exceptionListener = new AtomicReference<>();
+        final CountDownLatch consumerClosed = new CountDownLatch(1);
         final FakeInstanceLock instanceLock = new FakeInstanceLock();
         final AtomicInteger acknowledgementCalls = new AtomicInteger();
         volatile JMSException acknowledgementFailure;
@@ -463,7 +557,9 @@ final class ScenarioReceiverServiceTest {
                 if (method.getName().equals("setMessageListener")) {
                     listener.set((MessageListener) args[0]); return null;
                 }
-                if (method.getName().equals("close")) { closes.add("consumer"); return null; }
+                if (method.getName().equals("close")) {
+                    closes.add("consumer"); consumerClosed.countDown(); return null;
+                }
                 return defaultValue(method.getReturnType());
             });
             Session session = proxy(Session.class, (method, args) -> {
@@ -499,6 +595,12 @@ final class ScenarioReceiverServiceTest {
         }
 
         ScenarioReceiverService service(TestCapture capture) {
+            return service(capture, diagnostic -> {}, (event, category) -> {});
+        }
+
+        ScenarioReceiverService service(TestCapture capture,
+                ScenarioReceiverService.AsyncFailureSink asyncFailureSink,
+                ScenarioReceiverService.FailureLifecycleSink failureLifecycleSink) {
             return new ScenarioReceiverService(
                 factory, ACCOUNT, "scenario-openwire", TOPIC,
                 (message, generation) -> {
@@ -506,7 +608,8 @@ final class ScenarioReceiverServiceTest {
                     return new NativeCaptureCommit(new byte[]{1}, java.time.Instant.EPOCH,
                     "capture", "capture.json", null, null, false);
                 },
-                (committed, generation) -> {}, snapshot -> {}, instanceLock, events::add);
+                (committed, generation) -> {}, snapshot -> {}, instanceLock, events::add,
+                asyncFailureSink, failureLifecycleSink);
         }
 
         interface TestCapture { void capture(Message message) throws Exception; }

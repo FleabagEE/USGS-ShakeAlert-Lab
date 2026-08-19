@@ -39,6 +39,16 @@ final class ScenarioReceiverService {
     }
 
     @FunctionalInterface
+    interface AsyncFailureSink {
+        void persist(AsyncJmsFailureClassifier.Diagnostic diagnostic);
+    }
+
+    @FunctionalInterface
+    interface FailureLifecycleSink {
+        void emit(String event, AsyncJmsFailureClassifier.Category category);
+    }
+
+    @FunctionalInterface
     interface HealthSink { void publish(HealthSnapshot snapshot); }
 
     interface InstanceLock extends AutoCloseable {
@@ -80,6 +90,8 @@ final class ScenarioReceiverService {
     private final PostAcknowledgeHandler postAcknowledgeHandler;
     private final HealthSink healthSink;
     private final Consumer<String> lifecycleSink;
+    private final AsyncFailureSink asyncFailureSink;
+    private final FailureLifecycleSink failureLifecycleSink;
     private final InstanceLock instanceLock;
     private final long generation;
     private final Instant processStartedUtc;
@@ -110,6 +122,7 @@ final class ScenarioReceiverService {
     private Instant lastErrorUtc;
     private boolean callbackAdmissionClosedReported;
     private boolean callbackDrainCompleteReported;
+    private Instant connectionStartedUtc;
 
     ScenarioReceiverService(
         ActiveMQConnectionFactory factory,
@@ -122,7 +135,8 @@ final class ScenarioReceiverService {
         InstanceLock instanceLock
     ) {
         this(factory, accountId, endpointName, exactDestination, captureHandler,
-            postAcknowledgeHandler, healthSink, instanceLock, ignored -> {});
+            postAcknowledgeHandler, healthSink, instanceLock, ignored -> {},
+            ignored -> {}, (event, category) -> {});
     }
 
     ScenarioReceiverService(
@@ -136,6 +150,24 @@ final class ScenarioReceiverService {
         InstanceLock instanceLock,
         Consumer<String> lifecycleSink
     ) {
+        this(factory, accountId, endpointName, exactDestination, captureHandler,
+            postAcknowledgeHandler, healthSink, instanceLock, lifecycleSink,
+            ignored -> {}, (event, category) -> {});
+    }
+
+    ScenarioReceiverService(
+        ActiveMQConnectionFactory factory,
+        String accountId,
+        String endpointName,
+        String exactDestination,
+        CaptureHandler captureHandler,
+        PostAcknowledgeHandler postAcknowledgeHandler,
+        HealthSink healthSink,
+        InstanceLock instanceLock,
+        Consumer<String> lifecycleSink,
+        AsyncFailureSink asyncFailureSink,
+        FailureLifecycleSink failureLifecycleSink
+    ) {
         this.factory = Objects.requireNonNull(factory, "factory");
         this.accountId = Objects.requireNonNull(accountId, "accountId");
         this.endpointName = Objects.requireNonNull(endpointName, "endpointName");
@@ -146,6 +178,9 @@ final class ScenarioReceiverService {
         this.healthSink = Objects.requireNonNull(healthSink, "healthSink");
         this.instanceLock = Objects.requireNonNull(instanceLock, "instanceLock");
         this.lifecycleSink = Objects.requireNonNull(lifecycleSink, "lifecycleSink");
+        this.asyncFailureSink = Objects.requireNonNull(asyncFailureSink, "asyncFailureSink");
+        this.failureLifecycleSink = Objects.requireNonNull(
+            failureLifecycleSink, "failureLifecycleSink");
         this.generation = NEXT_GENERATION.incrementAndGet();
         this.processStartedUtc = Instant.now();
         this.stateEnteredUtc = processStartedUtc;
@@ -179,6 +214,7 @@ final class ScenarioReceiverService {
             Connection createdConnection = factory.createConnection();
             synchronized (monitor) {
                 connection = createdConnection;
+                connectionStartedUtc = Instant.now();
                 connectionClosed = false;
                 connected = true;
                 createdConnection.setExceptionListener(this::onAsyncJmsException);
@@ -406,12 +442,27 @@ final class ScenarioReceiverService {
         }
     }
 
-    private void onAsyncJmsException(javax.jms.JMSException ignored) {
+    private void onAsyncJmsException(javax.jms.JMSException failure) {
+        AsyncJmsFailureClassifier.Diagnostic diagnostic;
+        AsyncJmsFailureClassifier.Category category;
         synchronized (monitor) {
+            Instant failureUtc = Instant.now();
+            diagnostic = AsyncJmsFailureClassifier.diagnostic(
+                failure, failureUtc, connectionStartedUtc, snapshotLocked());
+            category = diagnostic.failureCategory();
             asyncJmsError = true;
             shutdownRequested = true;
-            failLocked("async_jms", true);
+            failLocked(category.name(), true);
+        }
+        emitFailureLifecycle("ASYNC_EXCEPTION", category);
+        emitFailureLifecycle("FAILED", category);
+        synchronized (monitor) {
             monitor.notifyAll();
+        }
+        try {
+            asyncFailureSink.persist(diagnostic);
+        } catch (RuntimeException ignored) {
+            // Diagnostic persistence must never block the fail-closed coordinator path.
         }
     }
 
@@ -583,6 +634,15 @@ final class ScenarioReceiverService {
             lifecycleSink.accept(event);
         } catch (RuntimeException ignored) {
             // Sanitized lifecycle observability must not interrupt resource teardown.
+        }
+    }
+
+    private void emitFailureLifecycle(
+            String event, AsyncJmsFailureClassifier.Category category) {
+        try {
+            failureLifecycleSink.emit(event, category);
+        } catch (RuntimeException ignored) {
+            // Sanitized failure observability must not interrupt resource teardown.
         }
     }
 

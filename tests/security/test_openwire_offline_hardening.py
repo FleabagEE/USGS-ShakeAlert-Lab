@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).parents[2]
 SOURCE = (ROOT / "tools" / "ScenarioOpenWireReceiver.java").read_text()
 SERVICE_SOURCE = (ROOT / "tools" / "ScenarioReceiverService.java").read_text()
+ASYNC_CLASSIFIER = (ROOT / "tools" / "AsyncJmsFailureClassifier.java").read_text()
 WRAPPER = (ROOT / "bin" / "java-receiver").read_text()
 
 
@@ -81,6 +82,17 @@ def test_no_retry_fallback_publishing_or_production_path() -> None:
         "production.eew",
     ):
         assert forbidden not in SOURCE + SERVICE_SOURCE
+
+
+def test_async_failure_classifier_is_type_only_bounded_and_fail_closed() -> None:
+    assert "MAX_CAUSE_NODES = 8" in ASYNC_CLASSIFIER
+    assert "IdentityHashMap" in ASYNC_CLASSIFIER
+    assert "UNKNOWN_JMS_FAILURE" in ASYNC_CLASSIFIER
+    assert "getLinkedException" in ASYNC_CLASSIFIER
+    for forbidden in ("getMessage()", "toString()", "printStackTrace", "getStackTrace"):
+        assert forbidden not in ASYNC_CLASSIFIER
+    for event in ('"ASYNC_EXCEPTION"', '"FAILED"'):
+        assert event in SERVICE_SOURCE
 
 
 def test_authentication_and_callback_lifecycle_ordering() -> None:

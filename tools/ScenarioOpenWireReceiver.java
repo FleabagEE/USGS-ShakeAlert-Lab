@@ -67,10 +67,32 @@ public final class ScenarioOpenWireReceiver {
             run(args);
         } catch (Exception error) {
             System.err.println("LISTENER_STATE=failed");
-            System.err.println("FAILURE_CATEGORY=" +
-                (error instanceof javax.jms.JMSSecurityException ? "authentication" : "startup"));
+            System.err.println("FAILURE_CATEGORY=" + terminalFailureCategory(error));
             System.exit(1);
         }
+    }
+
+    static final class TerminalServiceException extends IOException {
+        private final String sanitizedCategory;
+
+        TerminalServiceException(String sanitizedCategory) {
+            super("Scenario receiver service failed");
+            if (sanitizedCategory == null
+                    || !sanitizedCategory.matches("[A-Za-z0-9_]{1,64}")) {
+                throw new IllegalArgumentException("invalid sanitized terminal category");
+            }
+            this.sanitizedCategory = sanitizedCategory;
+        }
+
+        String sanitizedCategory() { return sanitizedCategory; }
+    }
+
+    static String terminalFailureCategory(Exception error) {
+        if (error instanceof javax.jms.JMSSecurityException) return "authentication";
+        if (error instanceof TerminalServiceException terminal) {
+            return terminal.sanitizedCategory();
+        }
+        return "startup";
     }
 
     record Endpoint(String host, int port) {}
@@ -86,11 +108,20 @@ public final class ScenarioOpenWireReceiver {
     interface ConnectionConfigurer { void configure(Connection connection) throws Exception; }
 
     private static void lifecycle(String event, String accountId, String topic) {
+        lifecycle(event, accountId, topic, null);
+    }
+
+    private static void lifecycle(String event, String accountId, String topic,
+            AsyncJmsFailureClassifier.Category failureCategory) {
         StringBuilder record = new StringBuilder("{\"timestamp_utc\":")
             .append(quote(Instant.now().toString()))
             .append(",\"event\":").append(quote(event))
             .append(",\"account_id\":").append(quote(accountId));
         if (topic != null) record.append(",\"destination\":").append(quote(topic));
+        if (failureCategory != null) {
+            record.append(",\"failure_category\":")
+                .append(quote(failureCategory.name()));
+        }
         System.out.println(record.append('}'));
         System.out.flush();
     }
@@ -295,6 +326,11 @@ public final class ScenarioOpenWireReceiver {
             ? new SanitizedRejectionStore(Path.of(args[8]),
                 new SanitizedRejectionStore.Retention(1000, 67108864L, Duration.ofDays(30)))
             : null;
+        SanitizedAsyncJmsIncidentStore asyncIncidentStore = args.length == 9
+            ? new SanitizedAsyncJmsIncidentStore(
+                Path.of(args[8]).toAbsolutePath().normalize().getParent()
+                    .resolve("incidents"))
+            : null;
         ScenarioReceiverService service = null;
         boolean shutdownCoordinated = false;
         try {
@@ -333,7 +369,9 @@ public final class ScenarioOpenWireReceiver {
                     }
                 },
                 healthStatus == null ? snapshot -> {} : healthStatus,
-                instanceLock, event -> lifecycle(event, accountId, topic));
+                instanceLock, event -> lifecycle(event, accountId, topic),
+                asyncIncidentStore == null ? diagnostic -> {} : asyncIncidentStore,
+                (event, category) -> lifecycle(event, accountId, topic, category));
             ScenarioReceiverProcessLifecycle processLifecycle =
                 new ScenarioReceiverProcessLifecycle(
                     service, Duration.ofSeconds(30), Duration.ofSeconds(35));
@@ -350,10 +388,12 @@ public final class ScenarioOpenWireReceiver {
             });
             shutdownCoordinated = true;
             if (finalState == ScenarioReceiverService.LifecycleState.FAILED) {
-                throw new IOException("Scenario receiver service failed");
+                throw new TerminalServiceException(service.snapshot().lastErrorCategory());
             }
         } catch (Exception error) {
-            reportBrokerFailure(error, username, password, diagnosticReported);
+            if (!(error instanceof TerminalServiceException)) {
+                reportBrokerFailure(error, username, password, diagnosticReported);
+            }
             throw error;
         } finally {
             if (!shutdownCoordinated && service != null
