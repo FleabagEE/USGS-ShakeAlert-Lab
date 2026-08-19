@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for offline implementation; receiver launch remains separately authorized.
+Accepted, deployed, and verified for the authorized Scenario scope.
 
 ## Decision
 
@@ -27,7 +27,10 @@ Expected data failures preserve the capture and allow subsequent deliveries. Une
 
 ## Consequences
 
-Transport, subscription, retry, publishing, and Production-isolation behavior is unchanged. A later acknowledgement milestone places CLIENT_ACKNOWLEDGE after this durable capture boundary. XML parsing never receives the live JMS object. Service-manager deployment and externally published parser health remain future work.
+Transport, subscription, retry, publishing, and Production-isolation behavior
+is unchanged. ADR 0010 now places `CLIENT_ACKNOWLEDGE` after this durable
+capture boundary. XML parsing never receives the live JMS object. ADR 0007
+provides managed deployment and sanitized parser health.
 
 ## Observed finite-fault profile
 

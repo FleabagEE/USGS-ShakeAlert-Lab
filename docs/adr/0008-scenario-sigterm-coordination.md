@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for offline implementation; reinstall and controlled service stop require separate authorization.
+Accepted, installed, and validated by controlled systemd shutdown.
 
 ## Context
 

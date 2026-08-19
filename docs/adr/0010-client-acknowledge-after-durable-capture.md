@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted for offline implementation; installation and receiver restart remain separately authorized.
+Accepted, installed, and validated across nine live delivery cycles at
+application revision `cd8e55c`.
 
 ## Decision
 

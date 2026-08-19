@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted for offline implementation; installation and first launch require separate authorization.
+Accepted, installed, and validated for the authorized Scenario scope. Every
+future start remains separately authorized.
 
 ## Decision
 

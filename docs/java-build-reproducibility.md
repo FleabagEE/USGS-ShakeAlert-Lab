@@ -35,9 +35,12 @@ mvn -o verify
 bin/java-receiver verify-runtime
 ```
 
-The final verification used Ubuntu Maven 3.8.7 and OpenJDK 21.0.11. All 10
-JUnit tests passed, Maven Enforcer and duplicate-class checks passed, and two
-clean offline builds produced the same packaged-JAR SHA-256.
+The final `cd8e55c` pre-deployment verification used Ubuntu Maven 3.8.7 and
+OpenJDK 21.0.11. The current suite discovers 97 JUnit tests; 96 run in the
+ordinary offline suite and one historical-corpus regression is opt-in when its
+approved local capture sources are not supplied. The frozen historical corpus
+has separately passed at 28/28. Maven Enforcer and duplicate-class checks
+passed, and two clean offline builds produced the same packaged-JAR SHA-256.
 
 `verify-runtime` inspects only compiled files and the generated classpath. It
 does not load `ScenarioOpenWireReceiver`, read credentials, or establish a JMS,

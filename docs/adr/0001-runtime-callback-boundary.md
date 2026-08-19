@@ -2,7 +2,17 @@
 
 ## Status
 
-Accepted
+Accepted as the original protocol-neutral design; superseded for the managed
+Java Scenario receiver by ADRs 0005, 0006, and 0010.
+
+## Implementation update — 2026-08-19
+
+The verified Java receiver cannot return immediately after creating an
+envelope because its established lossless boundary is stricter: the admitted
+JMS callback durably captures the native payload, acknowledges only after that
+commit, and then performs bounded interpretation. No JMS object crosses into
+the application envelope. This update preserves the historical rationale while
+recording the later protocol-specific decision.
 
 ## Context
 

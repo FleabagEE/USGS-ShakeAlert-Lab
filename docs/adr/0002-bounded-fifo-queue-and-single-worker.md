@@ -2,7 +2,16 @@
 
 ## Status
 
-Accepted
+Accepted for the protocol-neutral Python runtime; not selected for the managed
+Java Scenario receiver.
+
+## Implementation update — 2026-08-19
+
+The Java receiver uses one JMS session/listener with bounded synchronous native
+capture and no intermediate application FIFO. Callback admission, capture
+limits, ACK ordering, and shutdown draining are owned by
+`ScenarioReceiverService` under ADRs 0005 and 0010. Message rates, bursts, and
+any future need for a separate queue remain open rather than inferred.
 
 ## Context
 

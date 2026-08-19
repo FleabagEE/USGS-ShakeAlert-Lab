@@ -4,6 +4,14 @@
 
 Accepted
 
+## Implementation update — 2026-08-19
+
+ADR 0010 resolves the deferred acknowledgement boundary for the managed Java
+receiver: file fsync, atomic move, and capture-directory fsync complete before
+`Message.acknowledge()`, and parsing follows acknowledgement. Capture or ACK
+failure latches `FAILED`; parser rejection cannot invalidate the capture.
+Broker confirmation/redelivery semantics remain external questions.
+
 ## Context
 
 The laboratory must capture and characterize the authorized native ShakeAlert

@@ -16,17 +16,20 @@ and SHA-256 values matched every stored record. No JMS, transport, capture,
 publishing, fallback, or Production error occurred during the successful test.
 Sanitized evidence is retained locally under the ignored evidence boundary.
 
-This accepts only the Scenario proof-of-concept milestone. Production endpoint
-facts and authorization, long-duration reliability, acknowledgment semantics,
+That initial checkpoint accepted only the Scenario proof-of-concept milestone.
+At that time, long-duration reliability, application acknowledgement,
 schema/sequence characterization, operational mapping, and CUBE/PX-01 design
-remain outside this acceptance.
+remained outside acceptance. The later sections below record the managed
+receiver work completed since that checkpoint; Production remains outside it.
 
 The repository-defined Java build is verified on this host with Ubuntu Maven
 3.8.7 and Java 21. The isolated dependencies/plugins are provisioned only in
 `.mvn/repository` and sealed by `build-support/maven-artifacts.sha256`. Offline
-compilation, all 10 JUnit tests, dependency convergence, upper-bound dependency
-enforcement, duplicate-class checks, packaging, runtime-classpath verification,
-and two clean-build JAR SHA-256 comparison passed.
+compilation, the then-current 10 JUnit tests, dependency convergence,
+upper-bound dependency enforcement, duplicate-class checks, packaging,
+runtime-classpath verification, and two clean-build JAR SHA-256 comparison
+passed. The later `cd8e55c` suite contains 97 tests, with one historical-corpus
+regression opt-in when its approved local sources are unavailable.
 
 ## Managed receiver validation — 2026-08-19
 
@@ -44,3 +47,62 @@ observation created no new capture or rejection. After shutdown, no receiver
 process or broker connection remained. The service stayed disabled with
 `Restart=no`. Credentials and configuration were unchanged, and no Production
 or CUBE connection or publishing activity occurred.
+
+## Final current-revision live-delivery acceptance
+
+The installed application revision remained `cd8e55c`; Git commit `f8a84f9`
+was a later documentation-only change. The receiver was `READY` before the
+operator requested the authorized M4.6 Westmoreland Event-only Scenario. Portal
+Event ID `18718` identifies that portal operation only and is not asserted to
+equal an identity inside any JMS message.
+
+Nine deliveries completed the required sequence:
+
+```text
+MESSAGE_CALLBACK -> CAPTURE_COMMITTED -> ACKNOWLEDGEMENT_STARTED
+-> ACKNOWLEDGED -> parser processing
+```
+
+The run produced nine finalized captures, eight `ShakeAlertEventUpdate`
+objects, and one `ShakeAlertFollowUp`. Independent size and SHA-256 checks
+passed for every capture. There were zero acknowledgement, capture, parser, or
+asynchronous JMS failures; zero new rejections; and zero temporary captures.
+The capture inventory increased from 27 to 36 while the rejection inventory
+remained six.
+
+Normal shutdown then produced the complete sequence from
+`SHUTDOWN_REQUESTED` through ordered consumer/session/connection closure,
+instance-lock release, and `STOPPED`. The process exited 0, systemd reported
+success, and no receiver process or Scenario broker socket remained. The
+service remained disabled with `Restart=no`; no Production/CUBE connection or
+publishing occurred.
+
+## Milestone decision
+
+**MANAGED SCENARIO RECEIVER MILESTONE: COMPLETE**
+
+This decision applies only to the authorized Scenario/development scope. It
+does not establish Production or CUBE readiness, authorize another connection,
+or claim complete knowledge of undocumented USGS protocol semantics.
+
+### Scenario hardening and follow-up
+
+- Long-duration idle/endurance, storage-capacity, and controlled network-loss
+  testing.
+- Persistent duplicate/redelivery history across process activations.
+- Capture archival and retention operations beyond current rejection and
+  incident retention.
+- Continued validation of additional observed schema variants.
+
+### Blocked on authoritative USGS facts or authorization
+
+- Heartbeat/inactivity semantics, broker ACK confirmation and redelivery
+  window, prefetch/flow control, and non-durable missed-message expectations.
+- Cancellation and complete sequence/version semantics, expected rates/bursts
+  and maximum payloads, and credential expiration/rotation requirements.
+
+### Future Production/CUBE milestone
+
+- Production endpoint, authorization, credentials, destinations, and operating
+  policy.
+- Any mapping, integration, or operational-output path involving CUBE/PX-01.

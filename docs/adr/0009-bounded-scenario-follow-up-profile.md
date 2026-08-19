@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted for offline implementation; installation and receiver restart remain separately authorized.
+Accepted, installed, and validated against historical captures and one live
+follow-up delivery in the final `cd8e55c` Scenario acceptance.
 
 ## Context
 

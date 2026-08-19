@@ -13,12 +13,22 @@ is `scenario.eew.shakealert.org:61612`, using ActiveMQ OpenWire over
 hostname-verified TLS with the explicit `QuakeLogic-SA1` account. The exact,
 non-wildcard Event Topic is `eew.test_QuakeLogic-SA1.dm.data`.
 
-During the authorized M4.6 Westmoreland Event-only Scenario on 2026-08-18, the
-already connected non-durable Topic consumer received eight Event updates.
-Eight bounded native captures committed successfully, all declared payload
-sizes and SHA-256 values were verified, and no JMS, transport, capture,
-publishing, fallback, or Production error occurred. Sanitized evidence is
-preserved locally under the Git-ignored `evidence/` boundary.
+The initial authorized M4.6 Westmoreland Event-only proof-of-concept on
+2026-08-18 delivered eight updates and established lossless native capture.
+The final managed-receiver acceptance on 2026-08-19 tested installed
+application revision `cd8e55c` while the later Git HEAD differed only by
+documentation. The receiver was ready before authorized portal Event `18718`;
+the portal identifier is only temporally and operationally correlated with the
+test, not asserted to be a JMS message identity.
+
+That final run delivered nine messages. Every callback produced one durable
+capture followed by one application acknowledgement and parser processing:
+eight `ShakeAlertEventUpdate` values and one `ShakeAlertFollowUp`. All nine
+payload size and SHA-256 checks passed, no temporary capture remained, and no
+JMS, transport, capture, acknowledgement, parser, publishing, fallback, or
+Production error occurred. Normal ordered shutdown exited 0 and left no
+receiver process or broker socket. Sanitized evidence remains under the
+Git-ignored `evidence/` boundary.
 
 Production connectivity remains untested and unauthorized. The offline MQTT
 adapter is not evidence that either USGS endpoint uses MQTT.
@@ -45,9 +55,11 @@ PYTHONPATH=src .venv/bin/pytest -q
 
 The Java receiver is defined by a pinned Java 21/Maven 3.8.7 build. Its isolated
 `.mvn/repository` has been provisioned and sealed by
-`build-support/maven-artifacts.sha256`. Offline compilation, all 10 JUnit
-behavioral tests, Enforcer and duplicate-class checks, runtime-classpath
-verification, and two-build JAR reproducibility have passed. See
+`build-support/maven-artifacts.sha256`. Offline compilation, the current
+97-test JUnit suite (one historical-corpus test is opt-in when its approved
+local sources are not supplied), Enforcer and duplicate-class checks,
+runtime-classpath verification, and two-build JAR reproducibility have passed.
+The frozen historical corpus has also been verified separately at 28/28. See
 `docs/java-build-reproducibility.md`.
 
 Authorized Ubuntu host provisioning and validation:
@@ -60,11 +72,11 @@ sudo ./tests/security/verify_host_baseline.sh
 
 ## Current gate
 
-The Scenario end-to-end proof-of-concept and repository build verification are
-complete. The pinned offline Maven/JUnit suite, dependency convergence,
-duplicate-class analysis, runtime guards, checksum manifest, and reproducible
-packaging have passed. No further Scenario connection is required for this
-milestone.
+The managed Scenario receiver milestone is complete for the current authorized
+Scenario/development scope. It includes end-to-end delivery, durable capture,
+post-capture `CLIENT_ACKNOWLEDGE`, bounded Event/follow-up parsing, managed
+lifecycle, sanitized async-JMS failure handling, and clean systemd shutdown.
+No further Scenario connection is required to accept this milestone.
 
 Production endpoint discovery, authorization, listening, CUBE/PX-01 mapping,
 and operational-output decisions remain separate future gates.

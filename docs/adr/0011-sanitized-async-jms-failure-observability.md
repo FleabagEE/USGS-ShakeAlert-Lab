@@ -1,5 +1,12 @@
 # ADR 0011: Sanitized Asynchronous JMS Failure Observability
 
+## Status
+
+Accepted, installed, and startup/shutdown validated. No asynchronous JMS
+failure occurred during the bounded final live-delivery run, so live incident
+record creation was not exercised; deterministic offline failure-path coverage
+remains the acceptance evidence for persistence behavior.
+
 ## Decision
 
 An asynchronous JMS failure is classified only from allowlisted Java exception

@@ -4,6 +4,15 @@
 
 Accepted
 
+## Implementation update — 2026-08-19
+
+ADRs 0005, 0007, 0008, 0010, and 0011 implement the managed Java lifecycle,
+30-second callback-drain deadline, SIGTERM coordination, exit semantics,
+capture/ACK failure policy, and sanitized asynchronous JMS failure handling.
+The final `cd8e55c` live acceptance verified nine delivery cycles and ordered
+shutdown through `STOPPED` with exit status 0. No automatic in-process or
+systemd restart is enabled.
+
 ## Context
 
 The runtime must not accept deliveries before downstream processing is ready,
