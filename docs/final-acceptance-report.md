@@ -77,6 +77,49 @@ success, and no receiver process or Scenario broker socket remained. The
 service remained disabled with `Restart=no`; no Production/CUBE connection or
 publishing occurred.
 
+## First-stage Scenario endurance acceptance — 2026-08-19/20
+
+The installed application revision `cd8e55c`, with repository HEAD `96f8226`
+during execution, passed one controlled continuous two-hour Scenario idle
+soak. The actual interval was `2:00:02`, and all 41 planned monitoring samples
+succeeded. The receiver remained `RUNNING` with `READY=yes`; connected,
+authenticated, subscribed, and connection-started state remained true. The
+same MainPID and exactly one Scenario broker socket persisted throughout,
+`NRestarts` remained zero, and there was no reconnect, retry, or failover
+evidence.
+
+No delivery occurred during the soak. Capture inventory remained 36,
+rejection inventory remained six, and incident inventory remained zero. There
+were no acknowledgements, temporary captures, stuck callbacks, or asynchronous
+JMS, parser, capture, or acknowledgement failures. Capture and rejection
+aggregate integrity remained unchanged, and no incident record was created.
+
+Resource observations remained bounded:
+
+| Measurement | Initial/minimum | Maximum/final |
+|---|---:|---:|
+| RSS | 115,116 KiB | 117,432 KiB |
+| File descriptors | 15 | 15 |
+| Threads | 28 | 29 |
+| Cumulative CPU observation | approximately 2 s | approximately 9 s |
+
+RSS increased by approximately two percent and plateaued well below the
+defined investigation threshold. The minimum observed free capacity was
+576,599,425,024 bytes and 54,500,202 inodes. No leak or resource-exhaustion
+indicator was observed.
+
+The planned stop produced `SHUTDOWN_REQUESTED -> STOPPING ->
+CALLBACK_ADMISSION_CLOSED -> CONSUMER_CLOSED -> CALLBACK_DRAIN_COMPLETE ->
+SESSION_CLOSED -> CONNECTION_CLOSED -> INSTANCE_LOCK_RELEASED -> STOPPED`.
+The process exited 0, systemd reported success, the runtime directory was
+removed, and no receiver JVM or Scenario broker socket remained. The service
+stayed disabled with `Restart=no` and zero restarts. The repository working
+tree remained clean throughout execution.
+
+This evidence proves one continuous two-hour Scenario idle interval only. It
+does not establish authoritative USGS heartbeat or inactivity semantics, prove
+eight-hour or 24-hour endurance, or establish Production or CUBE readiness.
+
 ## Milestone decision
 
 **MANAGED SCENARIO RECEIVER MILESTONE: COMPLETE**
@@ -87,8 +130,11 @@ or claim complete knowledge of undocumented USGS protocol semantics.
 
 ### Scenario hardening and follow-up
 
-- Long-duration idle/endurance, storage-capacity, and controlled network-loss
-  testing.
+- The first-stage two-hour idle soak is complete. An eight-hour extended soak
+  is the next optional endurance stage; a 24-hour stage should follow only if
+  separately authorized after the eight-hour result.
+- Storage-capacity and controlled network-loss testing remain future,
+  separately authorized hardening work.
 - Persistent duplicate/redelivery history across process activations.
 - Capture archival and retention operations beyond current rejection and
   incident retention.
